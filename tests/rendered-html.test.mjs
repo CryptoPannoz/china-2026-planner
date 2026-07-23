@@ -86,6 +86,25 @@ test("mostra agenda per città e attività clou nell'itinerario", async () => {
   assert.match(planner, /openDayInAgenda/);
 });
 
+test("propone varianti di tappe aggiungibili o scartabili", async () => {
+  const planner = await source("app/ChinaPlanner.tsx");
+
+  assert.match(planner, /SUGGESTED_STOPS/);
+  assert.match(planner, /addSuggestedStop/);
+  assert.match(planner, /dismissSuggestion/);
+  assert.match(planner, /restoreSuggestions/);
+  assert.match(planner, /dismissedSuggestions/);
+  assert.match(planner, /Città da valutare/);
+  assert.match(planner, /id: "chongqing"/);
+  assert.match(planner, /id: "guilin"/);
+  assert.match(planner, /id: "lijiang"/);
+  assert.match(planner, /id: "dali"/);
+  assert.match(planner, /id: "emeishan"/);
+  assert.match(planner, /id: "xiamen"/);
+  assert.match(planner, /id: "hangzhou"/);
+  assert.match(planner, /id: "huangshan"/);
+});
+
 test("struttura agenda, mappe e registro condiviso", async () => {
   const [planner, rules] = await Promise.all([
     source("app/ChinaPlanner.tsx"),

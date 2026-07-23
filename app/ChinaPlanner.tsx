@@ -68,6 +68,20 @@ type Stop = {
   activities: Activity[];
 };
 
+type SuggestedStop = {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  nights: number;
+  hotelNightly: number;
+  recap: string;
+  transport: string;
+  season: string;
+  insertAfterId: string;
+  activities: Activity[];
+};
+
 type Leg = {
   id: string;
   fromId: string;
@@ -113,6 +127,7 @@ type PlanData = {
   costEntries: CostEntry[];
   expenses: Expense[];
   customCategories: string[];
+  dismissedSuggestions: string[];
   coverPhoto?: string;
 };
 
@@ -333,6 +348,145 @@ const initialStops: Stop[] = [
   },
 ];
 
+const SUGGESTED_STOPS: SuggestedStop[] = [
+  {
+    id: "chongqing",
+    name: "Chongqing",
+    lat: 29.563,
+    lng: 106.552,
+    nights: 2,
+    hotelNightly: 60,
+    insertAfterId: "chengdu",
+    recap: "La metropoli cyberpunk sul Yangtze: grattacieli a strapiombo, monorotaia tra i palazzi, hotpot leggendario e le sculture UNESCO di Dazu. Deviazione facilissima da Chengdu.",
+    transport: "Treno AV da Chengdu Est 1h15–2h, ~154 ¥ (150 corse al giorno)",
+    season: "Mite (10–15°C) ma capitale della nebbia; luci notturne comunque spettacolari, hotel scontati",
+    activities: [
+      { id: "hongya-cave", name: "Hongyadong illuminata di notte", description: "Palafitte di 11 piani, gratis; al tramonto, vista dal ponte Qiansimen", price: 0, selected: false },
+      { id: "dazu-rock-carvings", name: "Sculture rupestri di Dazu (UNESCO)", description: "Mezza giornata a Baodingshan; biglietto invernale ridotto ~120 ¥/pp", price: 30, selected: false },
+      { id: "yangtze-cableway", name: "Funivia sul fiume Yangtze", description: "Traversata panoramica, ~30 ¥ A/R a testa; meglio nei feriali", price: 8, selected: false },
+    ],
+  },
+  {
+    id: "guilin",
+    name: "Guilin & Yangshuo",
+    lat: 25.274,
+    lng: 110.29,
+    nights: 3,
+    hotelNightly: 65,
+    insertAfterId: "kunming",
+    recap: "Il paesaggio carsico più iconico della Cina: crociera sul fiume Li tra i pinnacoli fino a Yangshuo, risaie e bambù. A dicembre pochissimi turisti e clima secco.",
+    transport: "Volo da Chengdu ~2h (500–1100 ¥) o treno AV da Kunming ~4h30 (~250 ¥)",
+    season: "Stagione secca: 13–21°C di giorno; fiume in magra (crociera a volte accorciata), foschia al mattino",
+    activities: [
+      { id: "li-river-cruise", name: "Crociera sul fiume Li fino a Yangshuo", description: "4–4,5h tra i pinnacoli; 3 stelle 215 ¥/pp, 4 stelle 360–480 ¥", price: 55, selected: false },
+      { id: "yulong-bamboo-raft", name: "Zattera di bambù sul fiume Yulong", description: "Zattera per 2 ~220 ¥ tra risaie e ponti antichi", price: 28, selected: false },
+      { id: "reed-flute-cave", name: "Grotta del Flauto di Canna", description: "Stalattiti illuminate in città, ~90 ¥/pp, visita 1h", price: 23, selected: false },
+    ],
+  },
+  {
+    id: "lijiang",
+    name: "Lijiang",
+    lat: 26.855,
+    lng: 100.227,
+    nights: 3,
+    hotelNightly: 55,
+    insertAfterId: "kunming",
+    recap: "Città vecchia Naxi patrimonio UNESCO ai piedi della Montagna Innevata del Drago di Giada: a inizio dicembre cieli tersi e vicoli senza folla. La più romantica del gruppo.",
+    transport: "Treno da Kunming 3–3,5h, 166–220 ¥ (12 coppie di treni al giorno)",
+    season: "Sole quasi garantito: ~14°C di giorno ma fino a 0°C la notte; bassa stagione, prezzi ridotti",
+    activities: [
+      { id: "jade-dragon-snow-mountain", name: "Montagna Innevata del Drago di Giada", description: "Ingresso ~100 ¥ + funivia Glacier Park ~140 ¥/pp; prenotare la funivia", price: 60, selected: false },
+      { id: "lijiang-old-town", name: "Città vecchia e Stagno del Drago Nero", description: "Vicoli e canali Naxi; tassa 50 ¥/pp che include il parco", price: 13, selected: false },
+      { id: "shuhe-old-town", name: "Borgo antico di Shuhe in bici", description: "Versione tranquilla di Lijiang a 20 min, ingresso libero", price: 0, selected: false },
+    ],
+  },
+  {
+    id: "dali",
+    name: "Dali",
+    lat: 25.606,
+    lng: 100.268,
+    nights: 2,
+    hotelNightly: 50,
+    insertAfterId: "kunming",
+    recap: "Atmosfera rilassata tra il lago Erhai e i monti Cangshan, cultura Bai e borghi come Xizhou: il ritmo lento ideale per spezzare l'itinerario.",
+    transport: "Treno AV da Kunming ~2h, 109–155 ¥; da Dali a Lijiang altri ~2h di treno",
+    season: "Il mese più secco: sole e ~16°C di giorno, 3°C la notte, vento sul lago; pochissimi turisti",
+    activities: [
+      { id: "three-pagodas", name: "Tre Pagode del Tempio Chongsheng", description: "Icona millenaria col riflesso nel laghetto; ~121 ¥/pp, 2–3h", price: 30, selected: false },
+      { id: "erhai-lake-loop", name: "Giro del lago Erhai in e-bike", description: "Scooter elettrico 60–100 ¥ al giorno; tappe a Xizhou e Shuanglang", price: 12, selected: false },
+      { id: "cangshan-cableway", name: "Funivia sui monti Cangshan", description: "Funivia Gantong ~80 ¥/pp e sentiero panoramico Jade Belt", price: 20, selected: false },
+    ],
+  },
+  {
+    id: "emeishan",
+    name: "Emeishan",
+    lat: 29.601,
+    lng: 103.484,
+    nights: 2,
+    hotelNightly: 65,
+    insertAfterId: "chengdu",
+    recap: "Montagna sacra buddhista con la statua dorata a 3.079 m sopra il mare di nuvole: in inverno neve in vetta e terme ai piedi del monte. Si abbina al Buddha di Leshan, a un'ora da Chengdu.",
+    transport: "Treno AV da Chengdu 1h–1h30 (~55–65 ¥); navetta interna 90 ¥ A/R",
+    season: "Neve da metà dicembre in quota; stagione Ice & Snow con terme, ingresso ridotto 110 ¥",
+    activities: [
+      { id: "cima-dorata-jinding", name: "Cima Dorata (Jinding)", description: "Ingresso 110–160 ¥ + bus 90 ¥ + funivia ~50 ¥; alba sul mare di nuvole", price: 60, selected: false },
+      { id: "buddha-gigante-leshan", name: "Buddha Gigante di Leshan", description: "Statua rupestre di 71 m, mezza giornata in treno da Emeishan; 80 ¥", price: 20, selected: false },
+      { id: "terme-di-emei", name: "Terme ai piedi del monte", description: "Sorgenti calde serali (es. Lingxiu Hot Spring), 150–200 ¥/pp", price: 45, selected: false },
+    ],
+  },
+  {
+    id: "xiamen",
+    name: "Xiamen",
+    lat: 24.48,
+    lng: 118.089,
+    nights: 2,
+    hotelNightly: 70,
+    insertAfterId: "fenghuang",
+    recap: "L'unica tappa mite possibile a dicembre: città di mare rilassata con l'isola pedonale di Gulangyu (UNESCO), ville coloniali e caffè. Richiede però una deviazione lunga.",
+    transport: "Volo da Changsha (vicino Fenghuang) 1h30 (~60–110 € a testa) o AV da Shanghai ~5h",
+    season: "Mite e soleggiato (11–20°C), bassa stagione; il vento può sospendere i traghetti",
+    activities: [
+      { id: "gulangyu-sunlight-rock", name: "Gulangyu e Sunlight Rock", description: "Traghetto A/R 35 ¥ + rocca panoramica 50 ¥; ville coloniali", price: 21, selected: false },
+      { id: "tempio-nanputuo", name: "Tempio Nanputuo", description: "Tempio buddhista accanto all'università; gratuito", price: 0, selected: false },
+      { id: "zengcuoan-lungomare", name: "Zengcuoan e lungomare", description: "Ex villaggio di pescatori con street food e caffè; gratis", price: 0, selected: false },
+    ],
+  },
+  {
+    id: "hangzhou",
+    name: "Hangzhou",
+    lat: 30.274,
+    lng: 120.155,
+    nights: 2,
+    hotelNightly: 75,
+    insertAfterId: "wuzhen",
+    recap: "Il Lago dell'Ovest è il paesaggio classico della poesia cinese: pagode, ponti e colline di tè a 45 minuti da Shanghai. Si incastra tra Wuzhen e Suzhou senza stravolgere l'itinerario.",
+    transport: "Bus diretto da Wuzhen ~1h; AV per Suzhou ~1h30 o Shanghai 45–60 min (~73 ¥)",
+    season: "Freddo secco (0–10°C), poca pioggia, folla minima; hotel a prezzi invernali",
+    activities: [
+      { id: "crociera-lago-ovest", name: "Crociera sul Lago dell'Ovest", description: "Battello per le Tre Pagode riflesse; al tramonto, 55–70 ¥/pp", price: 18, selected: false },
+      { id: "lingyin-feilai-feng", name: "Tempio Lingyin e Feilai Feng", description: "Area gratuita da dic 2025 (prenotare su WeChat); tempio 30 ¥", price: 8, selected: false },
+      { id: "villaggio-te-longjing", name: "Villaggio del tè Longjing", description: "Colline di tè Dragon Well, ingresso libero; degustazione ~50 ¥/pp", price: 13, selected: false },
+    ],
+  },
+  {
+    id: "huangshan",
+    name: "Huangshan e borghi Hui",
+    lat: 29.717,
+    lng: 118.339,
+    nights: 2,
+    hotelNightly: 95,
+    insertAfterId: "wuzhen",
+    recap: "Le Montagne Gialle innevate con pini brinati e mare di nuvole sono lo scenario più iconico della Cina; in inverno folla ai minimi. Con i borghi UNESCO Hongcun e Xidi.",
+    transport: "Treno AV da Hangzhou 1h15 (~112 ¥) o da Shanghai ~3h; poi bus ~1h per Tangkou",
+    season: "Tariffa invernale (150 ¥ invece di 230); neve e ghiaccio probabili, ramponi utili, notte in vetta per l'alba",
+    activities: [
+      { id: "vetta-huangshan", name: "Scalata dello Huangshan", description: "Ingresso inverno 150 ¥ + funivia Yungu 65 ¥ a tratta; notte in vetta", price: 70, selected: false },
+      { id: "borgo-hongcun", name: "Borgo di Hongcun", description: "Villaggio UNESCO del film La tigre e il dragone; 104 ¥, valido 3 giorni", price: 26, selected: false },
+      { id: "borgo-xidi", name: "Borgo di Xidi", description: "Architettura Hui e vicoli lastricati, più quieto di Hongcun; 104 ¥/pp", price: 26, selected: false },
+    ],
+  },
+];
+
 const initialHotelStays = makeDefaultHotelStays(initialStops);
 
 const initialLegs: Leg[] = [
@@ -429,6 +583,7 @@ function normalizePlanData(value: unknown): PlanData | null {
     costEntries: Array.isArray(data.costEntries) ? data.costEntries : [],
     expenses: Array.isArray(data.expenses) ? data.expenses : [],
     customCategories: Array.isArray(data.customCategories) ? data.customCategories.filter((item): item is string => typeof item === "string") : [],
+    dismissedSuggestions: Array.isArray(data.dismissedSuggestions) ? data.dismissedSuggestions.filter((item): item is string => typeof item === "string") : [],
     coverPhoto: typeof data.coverPhoto === "string" ? data.coverPhoto : "",
   };
 }
@@ -504,7 +659,7 @@ function amapSearchUrl(place: string, city = "") {
   return `https://uri.amap.com/search?keyword=${encodeURIComponent(queryText)}&src=china2026planner&callnative=1`;
 }
 
-function amapStopUrl(stop: Stop) {
+function amapStopUrl(stop: Pick<Stop, "lat" | "lng" | "name">) {
   return `https://uri.amap.com/marker?position=${stop.lng},${stop.lat}&name=${encodeURIComponent(stop.name)}&coordinate=wgs84&src=china2026planner&callnative=1`;
 }
 
@@ -811,6 +966,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [newExpense, setNewExpense] = useState({ label: "", amount: 0, currency: "EUR" as Currency, paidBy: "alberto" as Payer, category: "cibo" as ExpenseCategory });
   const [newClouActivity, setNewClouActivity] = useState({ name: "", price: 0 });
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<string[]>([]);
   const [customCategories, setCustomCategories] = useState<string[]>([]);
   const [newCategory, setNewCategory] = useState("");
   const [coverPhoto, setCoverPhoto] = useState("");
@@ -837,6 +993,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
           setCostEntries(saved.costEntries);
           setExpenses(saved.expenses);
           setCustomCategories(saved.customCategories);
+          setDismissedSuggestions(saved.dismissedSuggestions);
           setCoverPhoto(saved.coverPhoto || "");
         }
       } catch {
@@ -872,6 +1029,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
         setCostEntries(remotePlan.costEntries);
         setExpenses(remotePlan.expenses);
         setCustomCategories(remotePlan.customCategories);
+        setDismissedSuggestions(remotePlan.dismissedSuggestions);
         setCoverPhoto(remotePlan.coverPhoto || "");
         localStorage.setItem(PLAN_STORAGE_KEY, serialized);
         setCloudReady(true);
@@ -906,6 +1064,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
         notes: "",
         cnyPerEuro: 8,
         customCategories: [],
+        dismissedSuggestions: [],
         coverPhoto: "",
         expenses: [],
         costEntries: [
@@ -950,6 +1109,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
       costEntries,
       expenses,
       customCategories,
+      dismissedSuggestions,
       coverPhoto,
     };
     const serialized = JSON.stringify(planData);
@@ -970,7 +1130,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     }, 700);
 
     return () => window.clearTimeout(timer);
-  }, [stops, legs, scheduleItems, hotelStays, checklist, notes, cnyPerEuro, costEntries, expenses, customCategories, coverPhoto, hydrated, cloudReady]);
+  }, [stops, legs, scheduleItems, hotelStays, checklist, notes, cnyPerEuro, costEntries, expenses, customCategories, dismissedSuggestions, coverPhoto, hydrated, cloudReady]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -1076,6 +1236,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
   const dayExpenses = expenses.filter((expense) => expense.date === selectedDay?.dateKey).sort((a, b) => a.id.localeCompare(b.id));
   const dayExpensesTotal = dayExpenses.reduce((sum, expense) => sum + toEuro(expense.amount, expense.currency), 0);
   const selectedStopDays = calendarDays.filter((day) => day.stopId === selectedStop.id);
+  const visibleSuggestions = SUGGESTED_STOPS.filter((suggestion) => !stops.some((stop) => stop.id === suggestion.id) && !dismissedSuggestions.includes(suggestion.id));
   const categoryOptions = useMemo(() => [
     ...BUILT_IN_CATEGORIES,
     ...customCategories.map((category) => ({ value: category, label: category })),
@@ -1326,6 +1487,36 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     if (removed) recordChange("Attività clou rimossa", `${stop?.name || "Tappa"}: ${removed.name}`);
   }
 
+  function addSuggestedStop(suggestion: SuggestedStop) {
+    if (stops.some((stop) => stop.id === suggestion.id)) return;
+    const stop: Stop = {
+      id: suggestion.id,
+      name: suggestion.name,
+      lat: suggestion.lat,
+      lng: suggestion.lng,
+      nights: suggestion.nights,
+      hotelNightly: suggestion.hotelNightly,
+      activities: suggestion.activities.map((activity) => ({ ...activity })),
+    };
+    setStops((current) => {
+      const anchorIndex = current.findIndex((item) => item.id === suggestion.insertAfterId);
+      const index = anchorIndex >= 0 ? anchorIndex + 1 : Math.max(1, current.length - 1);
+      return [...current.slice(0, index), stop, ...current.slice(index)];
+    });
+    setSelectedStopId(stop.id);
+    recordChange("Tappa aggiunta dalle proposte", `${stop.name} · ${stop.nights} ${stop.nights === 1 ? "notte" : "notti"}`);
+  }
+
+  function dismissSuggestion(suggestion: SuggestedStop) {
+    setDismissedSuggestions((current) => current.includes(suggestion.id) ? current : [...current, suggestion.id]);
+    recordChange("Proposta scartata", suggestion.name);
+  }
+
+  function restoreSuggestions() {
+    setDismissedSuggestions([]);
+    recordChange("Proposte ripristinate", "Tutte le città scartate sono di nuovo visibili");
+  }
+
   function openDayInAgenda(dateValue: string) {
     setSelectedDate(dateValue);
     setSection("calendar");
@@ -1444,6 +1635,27 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                 })}
                 <form className="add-stop" onSubmit={addStop}><input value={newStopName} onChange={(event) => setNewStopName(event.target.value)} placeholder="Aggiungi una città prima di Shanghai" /><button type="submit">+ Aggiungi tappa</button></form>
               </div>
+            </article>
+
+            <article className="card suggestions-card">
+              <div className="card-head"><div><p className="eyebrow">Varianti possibili · dalla tappa 3 in poi</p><h2>Città da valutare</h2></div><span className="subtle">Aggiungi o scarta: il piano si costruisce man mano</span></div>
+              <div className="suggestion-list">
+                {visibleSuggestions.length === 0 && <p className="empty">Nessuna proposta in sospeso: le hai aggiunte al piano o scartate tutte.</p>}
+                {visibleSuggestions.map((suggestion) => <div className="suggestion-row" key={suggestion.id}>
+                  <div className="suggestion-main">
+                    <div className="suggestion-title"><b>{suggestion.name}</b><span>{suggestion.nights} {suggestion.nights === 1 ? "notte" : "notti"} · hotel ~{euro.format(suggestion.hotelNightly)}/notte</span></div>
+                    <p>{suggestion.recap}</p>
+                    <small>🚄 {suggestion.transport}</small>
+                    <small>❄️ {suggestion.season}</small>
+                    <span className="activity-links"><a href={webSearchUrl(`${suggestion.name} Cina cosa vedere`)} target="_blank" rel="noreferrer">Cerca sul web ↗</a><a href={amapStopUrl(suggestion)} target="_blank" rel="noreferrer">Amap ↗</a></span>
+                  </div>
+                  <div className="suggestion-actions">
+                    <button className="primary" onClick={() => addSuggestedStop(suggestion)}>+ Aggiungi al piano</button>
+                    <button className="danger-text" onClick={() => dismissSuggestion(suggestion)}>Scarta</button>
+                  </div>
+                </div>)}
+              </div>
+              {dismissedSuggestions.length > 0 && <button className="restore-suggestions" onClick={restoreSuggestions}>↻ Ripristina {dismissedSuggestions.length} {dismissedSuggestions.length === 1 ? "proposta scartata" : "proposte scartate"}</button>}
             </article>
           </div>
 

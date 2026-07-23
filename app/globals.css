@@ -412,6 +412,22 @@ h3 { margin-bottom: 12px; font: 700 19px/1.1 Georgia, serif; }
 .clou-search { display: block; margin-top: 9px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 11px; color: var(--blue); font-size: 11px; font-weight: 800; text-align: center; text-decoration: none; }
 .clou-search:hover { background: var(--blue-soft); }
 
+/* --- Proposte di tappe / varianti --- */
+.suggestion-list { display: grid; gap: 10px; }
+.suggestion-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 14px; align-items: start; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+.suggestion-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 9px; }
+.suggestion-title b { font: 700 16px Georgia, serif; }
+.suggestion-title span { color: var(--muted); font-size: 10px; font-weight: 800; }
+.suggestion-main p { margin: 5px 0 6px; font-size: 12px; }
+.suggestion-main small { display: block; color: var(--muted); font-size: 10px; }
+.suggestion-main .activity-links { display: flex; gap: 10px; margin-top: 6px; }
+.suggestion-main .activity-links a { color: var(--blue); font-size: 9px; font-weight: 800; }
+.suggestion-actions { display: grid; gap: 6px; justify-items: stretch; }
+.suggestion-actions .primary { padding: 9px 13px; border: 0; border-radius: 9px; color: white; background: var(--green); font-size: 11px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.suggestion-actions .danger-text { text-align: center; }
+.restore-suggestions { margin-top: 11px; width: 100%; padding: 9px; border: 1px dashed var(--line); border-radius: 10px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 800; cursor: pointer; }
+.restore-suggestions:hover { color: var(--ink); background: var(--green-soft); }
+
 /* --- Spese giornaliere e splitwise --- */
 .day-expenses { margin-top: 16px; }
 .expense-list, .expense-register { display: grid; gap: 8px; }
@@ -542,6 +558,8 @@ h3 { margin-bottom: 12px; font: 700 19px/1.1 Georgia, serif; }
   .activity-row { grid-template-columns: 32px 1fr; }
   .activity-row > label { grid-column: 2; }
   .activity-row .clou-side { grid-column: 2; justify-items: start; }
+  .suggestion-row { grid-template-columns: 1fr; }
+  .suggestion-actions { grid-template-columns: 1fr auto; }
   .add-clou { grid-template-columns: 1fr; }
   .compare-row { grid-template-columns: minmax(0,1.3fr) 1fr 1fr 1fr; font-size: 11px; }
   .budget-hero-side { grid-template-columns: 1fr 1fr; gap: 14px; }
