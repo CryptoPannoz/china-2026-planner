@@ -88,6 +88,7 @@ type CostEntry = {
 };
 
 type PlanData = {
+  itineraryVersion: number;
   stops: Stop[];
   legs: Leg[];
   scheduleItems: ScheduleItem[];
@@ -147,6 +148,7 @@ const DEPARTURE_DATE = new Date("2026-12-04T00:00:00");
 const TRIP_NIGHTS = Math.round((DEPARTURE_DATE.getTime() - ARRIVAL_DATE.getTime()) / 86_400_000);
 const FLIGHTS_COST = 1384.44;
 const PLAN_STORAGE_KEY = "china-planner-v2";
+const ITINERARY_SCHEMA_VERSION = 1;
 const BUILT_IN_CATEGORIES = [
   { value: "visita", label: "Visita" },
   { value: "cibo", label: "Cibo" },
@@ -258,12 +260,27 @@ function normalizePlanData(value: unknown): PlanData | null {
   const data = value as Partial<PlanData>;
   if (!Array.isArray(data.stops) || !Array.isArray(data.legs) || !Array.isArray(data.scheduleItems)) return null;
 
-  const normalizedSchedule = data.scheduleItems.map(normalizeScheduleItem);
+  const needsItineraryRestore = (data.itineraryVersion || 0) < ITINERARY_SCHEMA_VERSION;
+  const normalizedSchedule = data.scheduleItems
+    .map(normalizeScheduleItem)
+    .filter((item) => scheduleKind(item) !== "hotel");
+  const stops = needsItineraryRestore ? mergeStopsWithDefaults(data.stops) : data.stops;
+  const legs = needsItineraryRestore ? mergeById(initialLegs, data.legs) : data.legs;
+  const scheduleItems = needsItineraryRestore
+    ? mergeById(initialSchedule.map(normalizeScheduleItem), normalizedSchedule)
+        .sort((left, right) => `${left.date}-${left.startTime}`.localeCompare(`${right.date}-${right.startTime}`))
+    : normalizedSchedule;
+  const savedHotels = Array.isArray(data.hotelStays) ? data.hotelStays : [];
+  const hotelStays = needsItineraryRestore
+    ? mergeById(makeDefaultHotelStays(stops), savedHotels)
+    : savedHotels;
+
   return {
-    stops: data.stops,
-    legs: data.legs,
-    scheduleItems: normalizedSchedule.filter((item) => scheduleKind(item) !== "hotel"),
-    hotelStays: Array.isArray(data.hotelStays) ? data.hotelStays : makeDefaultHotelStays(data.stops),
+    itineraryVersion: ITINERARY_SCHEMA_VERSION,
+    stops,
+    legs,
+    scheduleItems,
+    hotelStays,
     checklist: Array.isArray(data.checklist) ? data.checklist : defaultChecklist.map(() => false),
     notes: typeof data.notes === "string" ? data.notes : "",
     cnyPerEuro: typeof data.cnyPerEuro === "number" ? data.cnyPerEuro : 8,
@@ -271,6 +288,30 @@ function normalizePlanData(value: unknown): PlanData | null {
     customCategories: Array.isArray(data.customCategories) ? data.customCategories.filter((item): item is string => typeof item === "string") : [],
     coverPhoto: typeof data.coverPhoto === "string" ? data.coverPhoto : "",
   };
+}
+
+function mergeById<T extends { id: string }>(defaults: T[], saved: T[]) {
+  const savedById = new Map(saved.map((item) => [item.id, item]));
+  const defaultIds = new Set(defaults.map((item) => item.id));
+  return [
+    ...defaults.map((item) => savedById.get(item.id) || item),
+    ...saved.filter((item) => !defaultIds.has(item.id)),
+  ];
+}
+
+function mergeStopsWithDefaults(savedStops: Stop[]) {
+  const savedById = new Map(savedStops.map((stop) => [stop.id, stop]));
+  const defaultIds = new Set(initialStops.map((stop) => stop.id));
+  const restoredStops = initialStops.map((defaultStop) => {
+    const savedStop = savedById.get(defaultStop.id);
+    if (!savedStop) return defaultStop;
+    return {
+      ...defaultStop,
+      ...savedStop,
+      activities: mergeById(defaultStop.activities, savedStop.activities || []),
+    };
+  });
+  return [...restoredStops, ...savedStops.filter((stop) => !defaultIds.has(stop.id))];
 }
 
 function inferScheduleKind(category: string): ScheduleKind {
@@ -664,7 +705,8 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
 
     return onSnapshot(planDocument, async (snapshot) => {
       if (snapshot.exists()) {
-        const remotePlan = normalizePlanData(snapshot.data());
+        const remoteData = snapshot.data();
+        const remotePlan = normalizePlanData(remoteData);
         if (!remotePlan) {
           setSyncStatus("error");
           return;
@@ -685,12 +727,28 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
         localStorage.setItem(PLAN_STORAGE_KEY, serialized);
         setCloudReady(true);
         setSyncStatus("synced");
-        const updatedAt = snapshot.data().updatedAt as Timestamp | undefined;
+        const updatedAt = remoteData.updatedAt as Timestamp | undefined;
         setLastSavedAt(updatedAt?.toDate?.() || new Date());
+        if ((remoteData.itineraryVersion || 0) < ITINERARY_SCHEMA_VERSION) {
+          try {
+            await setDoc(planDocument, { ...remotePlan, updatedAt: serverTimestamp() });
+            await addDoc(collection(db, "travel-plans", "china-2026", "change-log"), {
+              authorEmail: currentUser.email || "",
+              authorName: currentUser.displayName || currentUser.email || "Utente",
+              action: "Itinerario ripristinato",
+              detail: "Recuperate tutte le tappe, le giornate e le attività del piano originale.",
+              createdAt: serverTimestamp(),
+            });
+            setLastSavedAt(new Date());
+          } catch {
+            setSyncStatus("error");
+          }
+        }
         return;
       }
 
       let seedPlan: PlanData = {
+        itineraryVersion: ITINERARY_SCHEMA_VERSION,
         stops: initialStops,
         legs: initialLegs,
         scheduleItems: initialSchedule,
@@ -726,11 +784,23 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     }, () => {
       setSyncStatus("error");
     });
-  }, [hydrated]);
+  }, [hydrated, currentUser]);
 
   useEffect(() => {
     if (!hydrated) return;
-    const planData: PlanData = { stops, legs, scheduleItems, hotelStays, checklist, notes, cnyPerEuro, costEntries, customCategories, coverPhoto };
+    const planData: PlanData = {
+      itineraryVersion: ITINERARY_SCHEMA_VERSION,
+      stops,
+      legs,
+      scheduleItems,
+      hotelStays,
+      checklist,
+      notes,
+      cnyPerEuro,
+      costEntries,
+      customCategories,
+      coverPhoto,
+    };
     const serialized = JSON.stringify(planData);
     localStorage.setItem(PLAN_STORAGE_KEY, serialized);
 

@@ -96,3 +96,16 @@ test("include la nuova copertina fotografica", async () => {
   assert.match(planner, /china-hero-couple\.jpg/);
   assert.ok(image.byteLength > 100_000);
 });
+
+test("ripristina una sola volta l’itinerario completo nei piani già salvati", async () => {
+  const planner = await source("app/ChinaPlanner.tsx");
+
+  assert.match(planner, /ITINERARY_SCHEMA_VERSION = 1/);
+  assert.match(planner, /mergeStopsWithDefaults/);
+  assert.match(planner, /mergeById\(initialSchedule\.map\(normalizeScheduleItem\), normalizedSchedule\)/);
+  assert.match(planner, /action: "Itinerario ripristinato"/);
+  assert.match(planner, /id: "d01-arrival"/);
+  assert.match(planner, /id: "d17-tower"/);
+  assert.match(planner, /id: "beijing"/);
+  assert.match(planner, /id: "shanghai"/);
+});
