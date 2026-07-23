@@ -7,30 +7,47 @@ async function source(path) {
 }
 
 test("esporta il planner come sito pubblico statico", async () => {
-  const [html, config, page] = await Promise.all([
+  const [html, config, page, planner] = await Promise.all([
     source("out/index.html"),
     source("next.config.ts"),
     source("app/page.tsx"),
+    source("app/ChinaPlanner.tsx"),
   ]);
 
   assert.match(html, /Cina 2026 — Alberto &amp; Sofia/);
-  assert.match(html, /Ogni giorno/);
-  assert.match(html, /Agenda giorno per giorno/);
+  assert.match(html, /Caricamento del planner/);
+  assert.match(planner, /Agenda giorno per giorno/);
   assert.match(config, /output:\s*"export"/);
   assert.match(config, /china-2026-planner/);
   assert.doesNotMatch(page, /redirect|cookies|login/i);
 });
 
-test("non contiene Gemini, Firebase, login o chiavi API", async () => {
+test("non contiene Gemini o API server", async () => {
   const files = await Promise.all([
     source("app/ChinaPlanner.tsx"),
-    source("package.json"),
-    source("README.md"),
     source("next.config.ts"),
   ]);
   const combined = files.join("\n");
 
-  assert.doesNotMatch(combined, /gemini|firebase|GEMINI_API_KEY|\/api\/gemini|signInWith/i);
+  assert.doesNotMatch(combined, /gemini|GEMINI_API_KEY|\/api\/gemini/i);
+});
+
+test("sincronizza il piano con accesso limitato alle due email", async () => {
+  const [planner, rules, firebaseClient] = await Promise.all([
+    source("app/ChinaPlanner.tsx"),
+    source("firestore.rules"),
+    source("lib/firebase.ts"),
+  ]);
+
+  assert.match(planner, /signInWithPopup/);
+  assert.match(planner, /onSnapshot/);
+  assert.match(planner, /setDoc/);
+  assert.match(planner, /Tutto sincronizzato/);
+  assert.match(firebaseClient, /persistentMultipleTabManager/);
+  assert.match(rules, /bebroggi@gmail\.com/);
+  assert.match(rules, /sofiakovaleva1998@gmail\.com/);
+  assert.match(rules, /allow read, write: if isPlannerMember/);
+  assert.match(rules, /allow read, write: if false/);
 });
 
 test("gestisce costi aggiungibili e rimovibili in euro e yuan", async () => {

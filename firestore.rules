@@ -1,0 +1,22 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isPlannerMember() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email in [
+          "bebroggi@gmail.com",
+          "sofiakovaleva1998@gmail.com"
+        ];
+    }
+
+    match /travel-plans/china-2026 {
+      allow read, write: if isPlannerMember();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

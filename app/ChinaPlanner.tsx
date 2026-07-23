@@ -1,6 +1,9 @@
 "use client";
 
 import { Dispatch, FormEvent, SetStateAction, useEffect, useMemo, useRef, useState } from "react";
+import { onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
+import { doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
+import { auth, db, googleProvider } from "@/lib/firebase";
 
 type Currency = "EUR" | "CNY";
 
@@ -60,6 +63,16 @@ type CostEntry = {
   currency: Currency;
 };
 
+type PlanData = {
+  stops: Stop[];
+  legs: Leg[];
+  scheduleItems: ScheduleItem[];
+  checklist: boolean[];
+  notes: string;
+  cnyPerEuro: number;
+  costEntries: CostEntry[];
+};
+
 type LeafletMap = {
   invalidateSize(): void;
   remove(): void;
@@ -97,6 +110,11 @@ const ARRIVAL_DATE = new Date("2026-11-17T00:00:00");
 const DEPARTURE_DATE = new Date("2026-12-04T00:00:00");
 const TRIP_NIGHTS = Math.round((DEPARTURE_DATE.getTime() - ARRIVAL_DATE.getTime()) / 86_400_000);
 const FLIGHTS_COST = 1384.44;
+const PLAN_STORAGE_KEY = "china-planner-v2";
+const ALLOWED_EMAILS = new Set([
+  "bebroggi@gmail.com",
+  "sofiakovaleva1998@gmail.com",
+]);
 
 const initialStops: Stop[] = [
   {
@@ -184,6 +202,22 @@ const euro = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR"
 const yuan = new Intl.NumberFormat("it-IT", { style: "currency", currency: "CNY" });
 const shortDate = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short" });
 const longDate = new Intl.DateTimeFormat("it-IT", { weekday: "short", day: "numeric", month: "long" });
+
+function normalizePlanData(value: unknown): PlanData | null {
+  if (!value || typeof value !== "object") return null;
+  const data = value as Partial<PlanData>;
+  if (!Array.isArray(data.stops) || !Array.isArray(data.legs) || !Array.isArray(data.scheduleItems)) return null;
+
+  return {
+    stops: data.stops,
+    legs: data.legs,
+    scheduleItems: data.scheduleItems,
+    checklist: Array.isArray(data.checklist) ? data.checklist : defaultChecklist.map(() => false),
+    notes: typeof data.notes === "string" ? data.notes : "",
+    cnyPerEuro: typeof data.cnyPerEuro === "number" ? data.cnyPerEuro : 8,
+    costEntries: Array.isArray(data.costEntries) ? data.costEntries : [],
+  };
+}
 
 function addDays(date: Date, amount: number) {
   const copy = new Date(date);
@@ -331,6 +365,66 @@ function InteractiveRouteMap({
 }
 
 export function ChinaPlanner() {
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [signingIn, setSigningIn] = useState(false);
+
+  useEffect(() => {
+    return onAuthStateChanged(auth, async (user) => {
+      const email = user?.email?.toLowerCase() || "";
+      if (user && !ALLOWED_EMAILS.has(email)) {
+        setAuthError("Questo account non è autorizzato per il planner.");
+        await signOut(auth);
+        setCurrentUser(null);
+      } else {
+        setCurrentUser(user);
+      }
+      setAuthReady(true);
+    });
+  }, []);
+
+  async function login() {
+    setSigningIn(true);
+    setAuthError("");
+    try {
+      const credential = await signInWithPopup(auth, googleProvider);
+      const email = credential.user.email?.toLowerCase() || "";
+      if (!ALLOWED_EMAILS.has(email)) {
+        await signOut(auth);
+        setAuthError("Usa l’account di Alberto o quello di Sofia.");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (!message.includes("popup-closed-by-user")) {
+        setAuthError("Accesso non riuscito. Riprova con Google.");
+      }
+    } finally {
+      setSigningIn(false);
+    }
+  }
+
+  if (!authReady) {
+    return <main className="access-page"><div className="access-card"><p className="eyebrow">Cina 2026</p><h1>Caricamento del planner…</h1></div></main>;
+  }
+
+  if (!currentUser) {
+    return <main className="access-page">
+      <div className="access-card">
+        <p className="eyebrow">Alberto & Sofia · Cina 2026</p>
+        <h1>Il viaggio, sempre con voi.</h1>
+        <p>Accedi con uno dei due account autorizzati. Agenda, costi e note saranno sincronizzati tra computer e telefono.</p>
+        <button className="google-login" onClick={login} disabled={signingIn}>{signingIn ? "Accesso…" : "Continua con Google"}</button>
+        {authError && <p className="access-error">{authError}</p>}
+        <small>Account autorizzati: Alberto e Sofia.</small>
+      </div>
+    </main>;
+  }
+
+  return <PlannerApp currentUser={currentUser} />;
+}
+
+function PlannerApp({ currentUser }: { currentUser: User }) {
   const [section, setSection] = useState("calendar");
   const [stops, setStops] = useState<Stop[]>(initialStops);
   const [legs, setLegs] = useState<Leg[]>(initialLegs);
@@ -359,18 +453,23 @@ export function ChinaPlanner() {
   ]);
   const [newCost, setNewCost] = useState({ label: "", amount: 0, currency: "EUR" as Currency });
   const [hydrated, setHydrated] = useState(false);
+  const [cloudReady, setCloudReady] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<"loading" | "saving" | "synced" | "error">("loading");
+  const lastCloudValueRef = useRef("");
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       try {
-        const saved = JSON.parse(localStorage.getItem("china-planner-v2") || "null") as Record<string, unknown> | null;
-        if (saved?.stops) setStops(saved.stops as Stop[]);
-        if (saved?.legs) setLegs(saved.legs as Leg[]);
-        if (saved?.scheduleItems) setScheduleItems(saved.scheduleItems as ScheduleItem[]);
-        if (saved?.checklist) setChecklist(saved.checklist as boolean[]);
-        if (typeof saved?.notes === "string") setNotes(saved.notes);
-        if (typeof saved?.cnyPerEuro === "number") setCnyPerEuro(saved.cnyPerEuro);
-        if (saved?.costEntries) setCostEntries(saved.costEntries as CostEntry[]);
+        const saved = normalizePlanData(JSON.parse(localStorage.getItem(PLAN_STORAGE_KEY) || "null"));
+        if (saved) {
+          setStops(saved.stops);
+          setLegs(saved.legs);
+          setScheduleItems(saved.scheduleItems);
+          setChecklist(saved.checklist);
+          setNotes(saved.notes);
+          setCnyPerEuro(saved.cnyPerEuro);
+          setCostEntries(saved.costEntries);
+        }
       } catch {
         // Mantiene i dati iniziali se il salvataggio locale non è leggibile.
       }
@@ -381,8 +480,85 @@ export function ChinaPlanner() {
 
   useEffect(() => {
     if (!hydrated) return;
-    localStorage.setItem("china-planner-v2", JSON.stringify({ stops, legs, scheduleItems, checklist, notes, cnyPerEuro, costEntries }));
-  }, [stops, legs, scheduleItems, checklist, notes, cnyPerEuro, costEntries, hydrated]);
+    const planDocument = doc(db, "travel-plans", "china-2026");
+
+    return onSnapshot(planDocument, async (snapshot) => {
+      if (snapshot.exists()) {
+        const remotePlan = normalizePlanData(snapshot.data());
+        if (!remotePlan) {
+          setSyncStatus("error");
+          return;
+        }
+
+        const serialized = JSON.stringify(remotePlan);
+        lastCloudValueRef.current = serialized;
+        setStops(remotePlan.stops);
+        setLegs(remotePlan.legs);
+        setScheduleItems(remotePlan.scheduleItems);
+        setChecklist(remotePlan.checklist);
+        setNotes(remotePlan.notes);
+        setCnyPerEuro(remotePlan.cnyPerEuro);
+        setCostEntries(remotePlan.costEntries);
+        localStorage.setItem(PLAN_STORAGE_KEY, serialized);
+        setCloudReady(true);
+        setSyncStatus("synced");
+        return;
+      }
+
+      let seedPlan: PlanData = {
+        stops: initialStops,
+        legs: initialLegs,
+        scheduleItems: initialSchedule,
+        checklist: defaultChecklist.map(() => false),
+        notes: "",
+        cnyPerEuro: 8,
+        costEntries: [
+          { id: "food", label: "Cibo e bevande", amount: 900, currency: "EUR" },
+          { id: "local", label: "Trasporti locali", amount: 300, currency: "EUR" },
+          { id: "extras", label: "Assicurazione, connettività ed extra", amount: 720, currency: "EUR" },
+        ],
+      };
+
+      try {
+        seedPlan = normalizePlanData(JSON.parse(localStorage.getItem(PLAN_STORAGE_KEY) || "null")) || seedPlan;
+      } catch {
+        // Usa il piano iniziale se il vecchio salvataggio non è leggibile.
+      }
+
+      const serialized = JSON.stringify(seedPlan);
+      lastCloudValueRef.current = serialized;
+      try {
+        await setDoc(planDocument, { ...seedPlan, updatedAt: serverTimestamp() });
+        setCloudReady(true);
+        setSyncStatus("synced");
+      } catch {
+        setSyncStatus("error");
+      }
+    }, () => {
+      setSyncStatus("error");
+    });
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const planData: PlanData = { stops, legs, scheduleItems, checklist, notes, cnyPerEuro, costEntries };
+    const serialized = JSON.stringify(planData);
+    localStorage.setItem(PLAN_STORAGE_KEY, serialized);
+
+    if (!cloudReady || serialized === lastCloudValueRef.current) return;
+    setSyncStatus("saving");
+    const timer = window.setTimeout(async () => {
+      try {
+        await setDoc(doc(db, "travel-plans", "china-2026"), { ...planData, updatedAt: serverTimestamp() });
+        lastCloudValueRef.current = serialized;
+        setSyncStatus("synced");
+      } catch {
+        setSyncStatus("error");
+      }
+    }, 700);
+
+    return () => window.clearTimeout(timer);
+  }, [stops, legs, scheduleItems, checklist, notes, cnyPerEuro, costEntries, hydrated, cloudReady]);
 
   const timeline = useMemo(() => {
     return stops.map((stop, index) => {
@@ -593,6 +769,12 @@ export function ChinaPlanner() {
     ["budget", "Budget"],
     ["planner", "Checklist & note"],
   ];
+  const syncLabel = {
+    loading: "Collegamento al database…",
+    saving: "Salvataggio…",
+    synced: "Tutto sincronizzato",
+    error: "Sincronizzazione non disponibile",
+  }[syncStatus];
 
   return (
     <main className="shell">
@@ -618,6 +800,11 @@ export function ChinaPlanner() {
       <nav className="nav" aria-label="Sezioni del viaggio">
         {navItems.map(([id, label]) => <button key={id} className={section === id ? "active" : ""} onClick={() => setSection(id)}>{label}</button>)}
       </nav>
+      <div className={`sync-bar ${syncStatus}`}>
+        <span><i />{syncLabel}</span>
+        <small>{currentUser.email}</small>
+        <button onClick={() => signOut(auth)}>Esci</button>
+      </div>
 
       {section === "itinerary" && (
         <section className="section-grid">
@@ -676,7 +863,7 @@ export function ChinaPlanner() {
 
       {section === "calendar" && <section className="panel-section">
         <div className="section-title agenda-title">
-          <div><p className="eyebrow">Agenda operativa · salvata su questo dispositivo</p><h2>Giorno per giorno, ora per ora</h2></div>
+          <div><p className="eyebrow">Agenda condivisa · sincronizzata tra i vostri dispositivi</p><h2>Giorno per giorno, ora per ora</h2></div>
           <div className="agenda-summary"><span><b>{scheduleItems.length}</b> attività</span><span><b>{bookingCount}</b> da prenotare</span><span><b>{euro.format(activitiesCost)}</b> pianificati</span><button onClick={() => window.print()}>Stampa piano</button></div>
         </div>
 
@@ -811,7 +998,7 @@ export function ChinaPlanner() {
       {section === "planner" && <section className="planner-grid simple">
         <div className="stack">
           <article className="card"><div className="card-head"><div><p className="eyebrow">Preparazione</p><h2>Checklist</h2></div><span>{checklist.filter(Boolean).length} / {checklist.length}</span></div><div className="checklist">{defaultChecklist.map((item, index) => <label key={item}><input type="checkbox" checked={Boolean(checklist[index])} onChange={() => setChecklist((current) => current.map((value, itemIndex) => itemIndex === index ? !value : value))} /><span>{item}</span></label>)}</div></article>
-          <article className="card notes-card"><div className="card-head"><div><p className="eyebrow">Salvate sul dispositivo</p><h2>Note condivise</h2></div></div><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Hotel preferiti, ristoranti, idee e cose da ricordare…" /></article>
+          <article className="card notes-card"><div className="card-head"><div><p className="eyebrow">Salvate nel database condiviso</p><h2>Note condivise</h2></div></div><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Hotel preferiti, ristoranti, idee e cose da ricordare…" /></article>
         </div>
       </section>}
     </main>

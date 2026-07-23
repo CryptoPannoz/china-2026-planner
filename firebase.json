@@ -1,0 +1,18 @@
+{
+  "auth": {
+    "providers": {
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "China 2026 Planner",
+        "supportEmail": "bebroggi@gmail.com",
+        "authorizedRedirectUris": [
+          "https://cryptopannoz.github.io"
+        ]
+      }
+    }
+  },
+  "firestore": {
+    "database": "(default)",
+    "location": "eur3",
+    "rules": "firestore.rules"
+  }
+}
