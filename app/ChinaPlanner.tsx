@@ -1,14 +1,15 @@
 "use client";
 
-/* eslint-disable @next/next/no-img-element -- le anteprime provengono da file locali data: */
+import { Dispatch, FormEvent, SetStateAction, useEffect, useMemo, useRef, useState } from "react";
 
-import { ChangeEvent, Dispatch, FormEvent, SetStateAction, useEffect, useMemo, useRef, useState } from "react";
+type Currency = "EUR" | "CNY";
 
 type Activity = {
   id: string;
   name: string;
   description: string;
   price: number;
+  currency?: Currency;
   selected: boolean;
   sourceUrl?: string;
 };
@@ -24,6 +25,7 @@ type ScheduleItem = {
   location: string;
   notes: string;
   price: number;
+  currency?: Currency;
   bookingStatus: "da-prenotare" | "prenotato" | "non-serve";
   sourceUrl?: string;
   sourceActivityId?: string;
@@ -46,33 +48,16 @@ type Leg = {
   mode: string;
   duration: string;
   cost: number;
+  currency?: Currency;
   included: boolean;
   note: string;
 };
 
-type AiSuggestion = {
-  name: string;
-  description: string;
-  priceEstimate: number;
-  currency?: string;
-  bookingNote?: string;
-  startTime?: string;
-  endTime?: string;
-  category?: ScheduleItem["category"];
-  location?: string;
-};
-
-type AiSource = { title: string; url: string };
-type PhotoItem = {
+type CostEntry = {
   id: string;
-  name: string;
-  type: string;
-  dataUrl: string;
-  createdAt: number;
-  translation?: string;
-  chineseText?: string;
-  pinyin?: string;
-  notes?: string;
+  label: string;
+  amount: number;
+  currency: Currency;
 };
 
 type LeafletMap = {
@@ -196,6 +181,7 @@ const defaultChecklist = [
 ];
 
 const euro = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" });
+const yuan = new Intl.NumberFormat("it-IT", { style: "currency", currency: "CNY" });
 const shortDate = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short" });
 const longDate = new Intl.DateTimeFormat("it-IT", { weekday: "short", day: "numeric", month: "long" });
 
@@ -344,34 +330,7 @@ function InteractiveRouteMap({
   );
 }
 
-function openPhotoDb() {
-  return new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open("china-photo-lab-v1", 1);
-    request.onupgradeneeded = () => request.result.createObjectStore("photos", { keyPath: "id" });
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function photoStore(mode: "get" | "put" | "delete", value?: PhotoItem | string) {
-  const db = await openPhotoDb();
-  return new Promise<PhotoItem[]>((resolve, reject) => {
-    const tx = db.transaction("photos", mode === "get" ? "readonly" : "readwrite");
-    const store = tx.objectStore("photos");
-    if (mode === "put") store.put(value as PhotoItem);
-    if (mode === "delete") store.delete(value as string);
-    if (mode === "get") {
-      const request = store.getAll();
-      request.onsuccess = () => resolve((request.result as PhotoItem[]).sort((a, b) => b.createdAt - a.createdAt));
-      request.onerror = () => reject(request.error);
-    } else {
-      tx.oncomplete = () => resolve([]);
-      tx.onerror = () => reject(tx.error);
-    }
-  });
-}
-
-export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string }) {
+export function ChinaPlanner() {
   const [section, setSection] = useState("calendar");
   const [stops, setStops] = useState<Stop[]>(initialStops);
   const [legs, setLegs] = useState<Leg[]>(initialLegs);
@@ -379,18 +338,6 @@ export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string })
   const [selectedDate, setSelectedDate] = useState("2026-11-17");
   const [selectedStopId, setSelectedStopId] = useState("beijing");
   const [newStopName, setNewStopName] = useState("");
-  const [aiQuery, setAiQuery] = useState("Cerca esperienze autentiche e indicami prezzi e modalità di prenotazione");
-  const [aiSuggestions, setAiSuggestions] = useState<AiSuggestion[]>([]);
-  const [aiAnswer, setAiAnswer] = useState("");
-  const [aiSources, setAiSources] = useState<AiSource[]>([]);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState("");
-  const [transportSearchId, setTransportSearchId] = useState("");
-  const [transportSuggestions, setTransportSuggestions] = useState<AiSuggestion[]>([]);
-  const [dayAiQuery, setDayAiQuery] = useState("Ritmo equilibrato, luoghi iconici e autentici, pause realistiche e spostamenti efficienti");
-  const [dayAiSuggestions, setDayAiSuggestions] = useState<AiSuggestion[]>([]);
-  const [dayAiAnswer, setDayAiAnswer] = useState("");
-  const [dayAiLoading, setDayAiLoading] = useState(false);
   const [newScheduleItem, setNewScheduleItem] = useState({
     startTime: "09:00",
     endTime: "11:00",
@@ -399,15 +346,18 @@ export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string })
     location: "",
     notes: "",
     price: 0,
+    currency: "EUR" as Currency,
     bookingStatus: "da-prenotare" as ScheduleItem["bookingStatus"],
   });
   const [checklist, setChecklist] = useState<boolean[]>(defaultChecklist.map(() => false));
   const [notes, setNotes] = useState("");
-  const [foodBudget, setFoodBudget] = useState(900);
-  const [localBudget, setLocalBudget] = useState(300);
-  const [otherBudget, setOtherBudget] = useState(720);
-  const [photos, setPhotos] = useState<PhotoItem[]>([]);
-  const [photoBusy, setPhotoBusy] = useState("");
+  const [cnyPerEuro, setCnyPerEuro] = useState(8);
+  const [costEntries, setCostEntries] = useState<CostEntry[]>([
+    { id: "food", label: "Cibo e bevande", amount: 900, currency: "EUR" },
+    { id: "local", label: "Trasporti locali", amount: 300, currency: "EUR" },
+    { id: "extras", label: "Assicurazione, connettività ed extra", amount: 720, currency: "EUR" },
+  ]);
+  const [newCost, setNewCost] = useState({ label: "", amount: 0, currency: "EUR" as Currency });
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
@@ -419,22 +369,20 @@ export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string })
         if (saved?.scheduleItems) setScheduleItems(saved.scheduleItems as ScheduleItem[]);
         if (saved?.checklist) setChecklist(saved.checklist as boolean[]);
         if (typeof saved?.notes === "string") setNotes(saved.notes);
-        if (typeof saved?.foodBudget === "number") setFoodBudget(saved.foodBudget);
-        if (typeof saved?.localBudget === "number") setLocalBudget(saved.localBudget);
-        if (typeof saved?.otherBudget === "number") setOtherBudget(saved.otherBudget);
+        if (typeof saved?.cnyPerEuro === "number") setCnyPerEuro(saved.cnyPerEuro);
+        if (saved?.costEntries) setCostEntries(saved.costEntries as CostEntry[]);
       } catch {
         // Mantiene i dati iniziali se il salvataggio locale non è leggibile.
       }
       setHydrated(true);
     });
-    photoStore("get").then(setPhotos).catch(() => undefined);
     return () => cancelAnimationFrame(frame);
   }, []);
 
   useEffect(() => {
     if (!hydrated) return;
-    localStorage.setItem("china-planner-v2", JSON.stringify({ stops, legs, scheduleItems, checklist, notes, foodBudget, localBudget, otherBudget }));
-  }, [stops, legs, scheduleItems, checklist, notes, foodBudget, localBudget, otherBudget, hydrated]);
+    localStorage.setItem("china-planner-v2", JSON.stringify({ stops, legs, scheduleItems, checklist, notes, cnyPerEuro, costEntries }));
+  }, [stops, legs, scheduleItems, checklist, notes, cnyPerEuro, costEntries, hydrated]);
 
   const timeline = useMemo(() => {
     return stops.map((stop, index) => {
@@ -444,6 +392,14 @@ export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string })
       return { stop, arrival, departure };
     });
   }, [stops]);
+
+  function toEuro(value: number, currency: Currency | undefined) {
+    return currency === "CNY" ? value / Math.max(cnyPerEuro, 0.01) : value;
+  }
+
+  function formatCost(value: number, currency: Currency | undefined) {
+    return currency === "CNY" ? yuan.format(value) : euro.format(value);
+  }
 
   const normalizedLegs = useMemo(() => {
     return stops.slice(0, -1).map((stop, index) => {
@@ -456,7 +412,7 @@ export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string })
         duration: "Da verificare",
         cost: 0,
         included: true,
-        note: "Cerca con Gemini la soluzione migliore",
+        note: "Inserisci qui la soluzione scelta",
       };
     });
   }, [stops, legs]);
@@ -466,10 +422,11 @@ export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string })
   const remainingNights = TRIP_NIGHTS - usedNights;
   const plannedActivities = scheduleItems.map((item) => ({ ...item, city: stops.find((stop) => stop.id === item.stopId)?.name || "Tappa" }));
   const budgetedActivities = plannedActivities.filter((item) => item.category === "visita" || item.category === "tempo-libero");
-  const activitiesCost = budgetedActivities.reduce((sum, item) => sum + item.price, 0);
+  const activitiesCost = budgetedActivities.reduce((sum, item) => sum + toEuro(item.price, item.currency), 0);
   const hotelCost = stops.reduce((sum, stop) => sum + stop.nights * stop.hotelNightly, 0);
-  const transportCost = normalizedLegs.filter((leg) => leg.included).reduce((sum, leg) => sum + leg.cost, 0);
-  const totalBudget = FLIGHTS_COST + hotelCost + transportCost + activitiesCost + foodBudget + localBudget + otherBudget;
+  const transportCost = normalizedLegs.filter((leg) => leg.included).reduce((sum, leg) => sum + toEuro(leg.cost, leg.currency), 0);
+  const addedCostsTotal = costEntries.reduce((sum, entry) => sum + toEuro(entry.amount, entry.currency), 0);
+  const totalBudget = FLIGHTS_COST + hotelCost + transportCost + activitiesCost + addedCostsTotal;
 
   const calendarDays = useMemo(() => {
     const entries: Array<{ date: Date; dateKey: string; stopId: string; city: string; type: string; detail: string }> = [];
@@ -503,7 +460,7 @@ export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string })
     }
   });
   const plannedDayCount = calendarDays.filter((day) => scheduleItems.some((item) => item.date === day.dateKey)).length;
-  const dayCost = selectedDayItems.reduce((sum, item) => sum + item.price, 0);
+  const dayCost = selectedDayItems.reduce((sum, item) => sum + toEuro(item.price, item.currency), 0);
   const bookingCount = scheduleItems.filter((item) => item.bookingStatus === "da-prenotare").length;
 
   function updateStop(id: string, patch: Partial<Stop>) {
@@ -545,8 +502,8 @@ export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string })
     });
   }
 
-  function updateActivityPrice(stopId: string, activityId: string, price: number) {
-    setStops((current) => current.map((stop) => stop.id !== stopId ? stop : { ...stop, activities: stop.activities.map((activity) => activity.id === activityId ? { ...activity, price } : activity) }));
+  function updateActivity(stopId: string, activityId: string, patch: Partial<Activity>) {
+    setStops((current) => current.map((stop) => stop.id !== stopId ? stop : { ...stop, activities: stop.activities.map((activity) => activity.id === activityId ? { ...activity, ...patch } : activity) }));
   }
 
   function addScheduleItem(event: FormEvent) {
@@ -561,6 +518,7 @@ export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string })
       location: newScheduleItem.location.trim(),
       notes: newScheduleItem.notes.trim(),
       price: Number(newScheduleItem.price) || 0,
+      currency: newScheduleItem.currency,
     }]);
     setNewScheduleItem((current) => ({ ...current, name: "", location: "", notes: "", price: 0 }));
   }
@@ -595,6 +553,7 @@ export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string })
       location: stop.name,
       notes: activity.description,
       price: activity.price,
+      currency: activity.currency || "EUR",
       bookingStatus: "da-prenotare",
       sourceUrl: activity.sourceUrl,
       sourceActivityId: activity.id,
@@ -607,165 +566,24 @@ export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string })
     setSection("calendar");
   }
 
-  async function runDayPlan() {
-    if (!selectedDay) return;
-    setDayAiLoading(true);
-    setDayAiSuggestions([]);
-    setDayAiAnswer("");
-    setAiError("");
-    try {
-      const response = await fetch("/api/gemini", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "day-plan",
-          city: selectedDay.city,
-          date: selectedDay.dateKey,
-          query: dayAiQuery,
-          existing: selectedDayItems.map((item) => `${item.startTime}-${item.endTime} ${item.name}`).join("; "),
-          latitude: stops.find((stop) => stop.id === selectedDay.stopId)?.lat,
-          longitude: stops.find((stop) => stop.id === selectedDay.stopId)?.lng,
-        }),
-      });
-      const payload = await response.json() as { error?: string; result?: { answer?: string; suggestions?: AiSuggestion[] }; sources?: AiSource[] };
-      if (!response.ok) throw new Error(payload.error || "Pianificazione non riuscita");
-      setDayAiAnswer(payload.result?.answer || "Proposta pronta.");
-      setDayAiSuggestions(payload.result?.suggestions || []);
-      setAiSources(payload.sources || []);
-    } catch (error) {
-      setAiError(error instanceof Error ? error.message : "Pianificazione non riuscita");
-    } finally {
-      setDayAiLoading(false);
-    }
-  }
-
-  function addDaySuggestion(suggestion: AiSuggestion) {
-    if (!selectedDay) return;
-    const allowedCategories: ScheduleItem["category"][] = ["visita", "trasporto", "cibo", "tempo-libero", "hotel"];
-    const category = allowedCategories.includes(suggestion.category as ScheduleItem["category"]) ? suggestion.category as ScheduleItem["category"] : "visita";
-    setScheduleItems((current) => [...current, {
-      id: uid("plan"),
-      date: selectedDay.dateKey,
-      stopId: selectedDay.stopId,
-      startTime: /^\d{2}:\d{2}$/.test(suggestion.startTime || "") ? suggestion.startTime as string : "09:00",
-      endTime: /^\d{2}:\d{2}$/.test(suggestion.endTime || "") ? suggestion.endTime as string : "11:00",
-      name: suggestion.name,
-      category,
-      location: suggestion.location || selectedDay.city,
-      notes: [suggestion.description, suggestion.bookingNote].filter(Boolean).join(" · "),
-      price: Number(suggestion.priceEstimate) || 0,
-      bookingStatus: suggestion.bookingNote ? "da-prenotare" : "non-serve",
-      sourceUrl: aiSources[0]?.url,
+  function addCostEntry(event: FormEvent) {
+    event.preventDefault();
+    if (!newCost.label.trim() || newCost.amount <= 0) return;
+    setCostEntries((current) => [...current, {
+      id: uid("cost"),
+      label: newCost.label.trim(),
+      amount: Number(newCost.amount) || 0,
+      currency: newCost.currency,
     }]);
+    setNewCost((current) => ({ ...current, label: "", amount: 0 }));
   }
 
-  function addEntireAiDay() {
-    dayAiSuggestions.forEach(addDaySuggestion);
-    setDayAiSuggestions([]);
+  function updateCostEntry(id: string, patch: Partial<CostEntry>) {
+    setCostEntries((current) => current.map((entry) => entry.id === id ? { ...entry, ...patch } : entry));
   }
 
-  function addSuggestion(suggestion: AiSuggestion) {
-    const activity: Activity = {
-      id: uid("activity"),
-      name: suggestion.name,
-      description: [suggestion.description, suggestion.bookingNote].filter(Boolean).join(" · "),
-      price: Number(suggestion.priceEstimate) || 0,
-      selected: true,
-      sourceUrl: aiSources[0]?.url,
-    };
-    updateStop(selectedStop.id, { activities: [...selectedStop.activities, activity] });
-    scheduleActivity(selectedStop, activity);
-  }
-
-  async function runActivitySearch() {
-    setAiLoading(true);
-    setAiError("");
-    setAiSuggestions([]);
-    try {
-      const response = await fetch("/api/gemini", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "activities", city: selectedStop.name, query: aiQuery, latitude: selectedStop.lat, longitude: selectedStop.lng }),
-      });
-      const payload = await response.json() as { error?: string; result?: { answer?: string; suggestions?: AiSuggestion[] }; sources?: AiSource[] };
-      if (!response.ok) throw new Error(payload.error || "Ricerca non riuscita");
-      setAiAnswer(payload.result?.answer || "Ricerca completata.");
-      setAiSuggestions(payload.result?.suggestions || []);
-      setAiSources(payload.sources || []);
-    } catch (error) {
-      setAiError(error instanceof Error ? error.message : "Ricerca non riuscita");
-    } finally {
-      setAiLoading(false);
-    }
-  }
-
-  async function runTransportSearch(leg: Leg) {
-    setTransportSearchId(leg.id);
-    setTransportSuggestions([]);
-    setAiError("");
-    const fromStop = stops.find((stop) => stop.id === leg.fromId);
-    const toStop = stops.find((stop) => stop.id === leg.toId);
-    try {
-      const response = await fetch("/api/gemini", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "transport", from: fromStop?.name, to: toStop?.name, query: "Trova opzioni concrete, durata porta a porta e costo per due persone" }),
-      });
-      const payload = await response.json() as { error?: string; result?: { suggestions?: AiSuggestion[] } };
-      if (!response.ok) throw new Error(payload.error || "Ricerca non riuscita");
-      setTransportSuggestions(payload.result?.suggestions || []);
-    } catch (error) {
-      setAiError(error instanceof Error ? error.message : "Ricerca non riuscita");
-    }
-  }
-
-  function applyTransportSuggestion(leg: Leg, suggestion: AiSuggestion) {
-    const durationMatch = suggestion.description.match(/\b\d+(?:[.,]\d+)?\s*(?:h|ore|min)/i)?.[0];
-    updateLeg(leg.id, { mode: suggestion.name, duration: durationMatch || leg.duration, cost: Number(suggestion.priceEstimate) || 0, note: suggestion.bookingNote || suggestion.description, included: true });
-    setTransportSuggestions([]);
-  }
-
-  async function addPhotos(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files || []).filter((file) => file.type.startsWith("image/") && file.size <= 8_000_000);
-    for (const file of files) {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
-      });
-      const item: PhotoItem = { id: uid("photo"), name: file.name, type: file.type, dataUrl, createdAt: Date.now() };
-      await photoStore("put", item);
-      setPhotos((current) => [item, ...current]);
-    }
-    event.target.value = "";
-  }
-
-  async function analyzePhoto(photo: PhotoItem) {
-    setPhotoBusy(photo.id);
-    setAiError("");
-    try {
-      const imageData = photo.dataUrl.split(",")[1] || "";
-      const response = await fetch("/api/gemini", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "scan", imageData, mimeType: photo.type, query: "Traduci le scritte e spiegami cosa devo ricordare" }),
-      });
-      const payload = await response.json() as { error?: string; result?: Partial<PhotoItem> & { answer?: string } };
-      if (!response.ok) throw new Error(payload.error || "Analisi non riuscita");
-      const updated = { ...photo, translation: payload.result?.translation || payload.result?.answer || "", chineseText: payload.result?.chineseText || "", pinyin: payload.result?.pinyin || "", notes: payload.result?.notes || "" };
-      await photoStore("put", updated);
-      setPhotos((current) => current.map((item) => item.id === photo.id ? updated : item));
-    } catch (error) {
-      setAiError(error instanceof Error ? error.message : "Analisi non riuscita");
-    } finally {
-      setPhotoBusy("");
-    }
-  }
-
-  async function deletePhoto(id: string) {
-    await photoStore("delete", id);
-    setPhotos((current) => current.filter((photo) => photo.id !== id));
+  function removeCostEntry(id: string) {
+    setCostEntries((current) => current.filter((entry) => entry.id !== id));
   }
 
   const navItems = [
@@ -773,7 +591,7 @@ export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string })
     ["calendar", "Agenda giorno per giorno"],
     ["transport", "Trasporti"],
     ["budget", "Budget"],
-    ["planner", "Checklist & foto"],
+    ["planner", "Checklist & note"],
   ];
 
   return (
@@ -785,18 +603,6 @@ export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string })
           <p className="lead">Un’agenda reale per costruire il viaggio: attività, tempi, spostamenti, prenotazioni e costi restano collegati.</p>
         </div>
         <div className="anchor-card">
-          <div className="account-bar">
-            <span>{currentUserEmail}</span>
-            <button
-              type="button"
-              onClick={async () => {
-                await fetch("/api/session/logout", { method: "POST" });
-                window.location.assign("/login");
-              }}
-            >
-              Esci
-            </button>
-          </div>
           <span>Piano operativo</span>
           <strong>{plannedDayCount} / {calendarDays.length} giorni</strong>
           <small>{scheduleItems.length} blocchi orari · {bookingCount} da prenotare</small>
@@ -839,7 +645,7 @@ export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string })
                     </div>
                     {leg && <div className={`leg-inline ${leg.included ? "" : "disabled"}`}>
                       <span className="leg-rail" />
-                      <div><b>{leg.included ? leg.mode : "Trasporto escluso"}</b><small>{leg.included ? `${leg.duration} · ${euro.format(leg.cost)}` : "Il calendario segnala un collegamento mancante"}</small></div>
+                      <div><b>{leg.included ? leg.mode : "Trasporto escluso"}</b><small>{leg.included ? `${leg.duration} · ${formatCost(leg.cost, leg.currency)}` : "Il calendario segnala un collegamento mancante"}</small></div>
                       <button onClick={() => updateLeg(leg.id, { included: !leg.included })}>{leg.included ? "Togli" : "Aggiungi"}</button>
                     </div>}
                   </div>;
@@ -852,27 +658,16 @@ export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string })
           <aside className="card city-workspace">
             <div className="card-head sticky"><div><p className="eyebrow">City box</p><h2>{selectedStop.name}</h2></div><span className="city-dates">{shortDate.format(timeline.find((item) => item.stop.id === selectedStop.id)?.arrival || ARRIVAL_DATE)}</span></div>
             <div className="city-body">
-              <div className="mini-budget"><span>Già in agenda</span><b>{scheduleItems.filter((item) => item.stopId === selectedStop.id).length}</b><small>{euro.format(scheduleItems.filter((item) => item.stopId === selectedStop.id).reduce((sum, item) => sum + item.price, 0))} nel budget</small></div>
+              <div className="mini-budget"><span>Già in agenda</span><b>{scheduleItems.filter((item) => item.stopId === selectedStop.id).length}</b><small>{euro.format(scheduleItems.filter((item) => item.stopId === selectedStop.id).reduce((sum, item) => sum + toEuro(item.price, item.currency), 0))} nel budget</small></div>
               <label className="hotel-field">Hotel per notte <span><input type="number" min="0" value={selectedStop.hotelNightly} onChange={(event) => updateStop(selectedStop.id, { hotelNightly: Number(event.target.value) || 0 })} /> €</span></label>
               <h3>Idee da mettere in agenda</h3>
               <div className="activity-list">
-                {selectedStop.activities.length === 0 && <p className="empty">Nessuna idea salvata: chiedi a Gemini di trovarne di nuove.</p>}
+                {selectedStop.activities.length === 0 && <p className="empty">Nessuna idea salvata per questa tappa.</p>}
                 {selectedStop.activities.map((activity) => <div className={`activity-row ${scheduleItems.some((item) => item.sourceActivityId === activity.id) ? "selected" : ""}`} key={activity.id}>
                   <button className="check" title="Aggiungi alla prima giornata disponibile" onClick={() => scheduleActivity(selectedStop, activity)}>{scheduleItems.some((item) => item.sourceActivityId === activity.id) ? "✓" : "+"}</button>
                   <div><b>{activity.name}</b><small>{activity.description}</small>{activity.sourceUrl && <a href={activity.sourceUrl} target="_blank" rel="noreferrer">Fonte ↗</a>}</div>
-                  <label><input type="number" min="0" value={activity.price} onChange={(event) => updateActivityPrice(selectedStop.id, activity.id, Number(event.target.value) || 0)} /> €</label>
+                  <label className="money-input"><input type="number" min="0" value={activity.price} onChange={(event) => updateActivity(selectedStop.id, activity.id, { price: Number(event.target.value) || 0 })} /><select aria-label={`Valuta ${activity.name}`} value={activity.currency || "EUR"} onChange={(event) => updateActivity(selectedStop.id, activity.id, { currency: event.target.value as Currency })}><option value="EUR">€</option><option value="CNY">¥</option></select></label>
                 </div>)}
-              </div>
-              <div className="gemini-box">
-                <div className="gemini-title"><span>✦</span><div><b>Trova altre attività</b><small>Gemini cerca, poi le colloca nella prima giornata libera</small></div></div>
-                <textarea value={aiQuery} onChange={(event) => setAiQuery(event.target.value)} aria-label="Domanda per Gemini" />
-                <button className="primary" onClick={runActivitySearch} disabled={aiLoading}>{aiLoading ? "Sto cercando…" : `Cerca a ${selectedStop.name}`}</button>
-                {aiError && <p className="error">{aiError}</p>}
-                {aiAnswer && <p className="ai-answer">{aiAnswer}</p>}
-                <div className="suggestions">
-                  {aiSuggestions.map((suggestion, index) => <div className="suggestion" key={`${suggestion.name}-${index}`}><div><b>{suggestion.name}</b><p>{suggestion.description}</p><small>{suggestion.bookingNote}</small></div><div className="suggestion-action"><strong>{euro.format(Number(suggestion.priceEstimate) || 0)}</strong><button onClick={() => addSuggestion(suggestion)}>Pianifica nell’agenda</button></div></div>)}
-                </div>
-                {aiSources.length > 0 && <div className="sources">{aiSources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.title} ↗</a>)}</div>}
               </div>
             </div>
           </aside>
@@ -915,7 +710,7 @@ export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string })
             {conflictingIds.size > 0 && <div className="agenda-warning"><b>Attenzione agli orari</b><span>Due o più attività si sovrappongono. Modifica inizio o fine nei blocchi evidenziati.</span></div>}
 
             <div className="time-plan">
-              {selectedDayItems.length === 0 && <div className="empty-day"><span>+</span><b>Questa giornata è ancora libera</b><p>Aggiungi un’attività manualmente o chiedi a Gemini di costruire un programma realistico.</p></div>}
+              {selectedDayItems.length === 0 && <div className="empty-day"><span>+</span><b>Questa giornata è ancora libera</b><p>Aggiungi il primo blocco con il modulo qui sotto.</p></div>}
               {selectedDayItems.map((item) => <article className={`schedule-item category-${item.category} ${conflictingIds.has(item.id) ? "conflict" : ""}`} key={item.id}>
                 <div className="schedule-time">
                   <label>Inizio<input type="time" value={item.startTime} onChange={(event) => updateScheduleItem(item.id, { startTime: event.target.value })} /></label>
@@ -932,7 +727,7 @@ export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string })
                   <input className="schedule-location" aria-label="Luogo" value={item.location} placeholder="Luogo, indirizzo o stazione" onChange={(event) => updateScheduleItem(item.id, { location: event.target.value })} />
                   <textarea aria-label="Note attività" value={item.notes} placeholder="Biglietti, cosa portare, note pratiche…" onChange={(event) => updateScheduleItem(item.id, { notes: event.target.value })} />
                   <div className="schedule-meta">
-                    <label>Costo per 2 <span><input type="number" min="0" value={item.price} onChange={(event) => updateScheduleItem(item.id, { price: Number(event.target.value) || 0 })} /> €</span></label>
+                    <label>Costo per 2 <span className="money-input"><input type="number" min="0" value={item.price} onChange={(event) => updateScheduleItem(item.id, { price: Number(event.target.value) || 0 })} /><select aria-label={`Valuta ${item.name}`} value={item.currency || "EUR"} onChange={(event) => updateScheduleItem(item.id, { currency: event.target.value as Currency })}><option value="EUR">€</option><option value="CNY">¥</option></select></span></label>
                     <label>Stato <select value={item.bookingStatus} onChange={(event) => updateScheduleItem(item.id, { bookingStatus: event.target.value as ScheduleItem["bookingStatus"] })}><option value="da-prenotare">Da prenotare</option><option value="prenotato">Prenotato</option><option value="non-serve">Nessuna prenotazione</option></select></label>
                     {item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noreferrer">Fonte ↗</a>}
                     <button className="danger-text" onClick={() => removeScheduleItem(item.id)}>Elimina</button>
@@ -949,7 +744,7 @@ export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string })
                 <label className="wide">Attività<input required value={newScheduleItem.name} placeholder="Es. Tempio del Cielo" onChange={(event) => setNewScheduleItem((current) => ({ ...current, name: event.target.value }))} /></label>
                 <label>Categoria<select value={newScheduleItem.category} onChange={(event) => setNewScheduleItem((current) => ({ ...current, category: event.target.value as ScheduleItem["category"] }))}><option value="visita">Visita</option><option value="trasporto">Trasporto</option><option value="cibo">Cibo</option><option value="tempo-libero">Tempo libero</option><option value="hotel">Hotel</option></select></label>
                 <label className="wide">Luogo<input value={newScheduleItem.location} placeholder="Indirizzo, quartiere o stazione" onChange={(event) => setNewScheduleItem((current) => ({ ...current, location: event.target.value }))} /></label>
-                <label>Costo per 2<input type="number" min="0" value={newScheduleItem.price} onChange={(event) => setNewScheduleItem((current) => ({ ...current, price: Number(event.target.value) || 0 }))} /></label>
+                <label>Costo per 2<span className="money-input"><input type="number" min="0" value={newScheduleItem.price} onChange={(event) => setNewScheduleItem((current) => ({ ...current, price: Number(event.target.value) || 0 }))} /><select aria-label="Valuta nuova attività" value={newScheduleItem.currency} onChange={(event) => setNewScheduleItem((current) => ({ ...current, currency: event.target.value as Currency }))}><option value="EUR">€</option><option value="CNY">¥</option></select></span></label>
                 <label>Stato<select value={newScheduleItem.bookingStatus} onChange={(event) => setNewScheduleItem((current) => ({ ...current, bookingStatus: event.target.value as ScheduleItem["bookingStatus"] }))}><option value="da-prenotare">Da prenotare</option><option value="prenotato">Prenotato</option><option value="non-serve">Nessuna prenotazione</option></select></label>
                 <label className="full">Note<textarea value={newScheduleItem.notes} placeholder="Tempi di trasferimento, biglietti, promemoria…" onChange={(event) => setNewScheduleItem((current) => ({ ...current, notes: event.target.value }))} /></label>
               </div>
@@ -957,23 +752,6 @@ export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string })
             </form>
           </div>
 
-          <aside className="card day-ai">
-            <div className="gemini-title"><span>✦</span><div><b>Gemini pianifica la giornata</b><small>{selectedDay?.city} · considera ciò che è già in agenda</small></div></div>
-            <p className="day-ai-intro">Descrivi interessi e ritmo. Riceverai una sequenza con orari, pause, zone coerenti, costi e indicazioni di prenotazione.</p>
-            <textarea value={dayAiQuery} onChange={(event) => setDayAiQuery(event.target.value)} aria-label="Preferenze per la giornata" />
-            <button className="primary full-button" onClick={runDayPlan} disabled={dayAiLoading}>{dayAiLoading ? "Sto costruendo la giornata…" : "✦ Pianifica questa giornata"}</button>
-            {aiError && <p className="error">{aiError}</p>}
-            {dayAiAnswer && <p className="ai-answer">{dayAiAnswer}</p>}
-            {dayAiSuggestions.length > 0 && <button className="add-entire-day" onClick={addEntireAiDay}>Aggiungi tutta la proposta ({dayAiSuggestions.length})</button>}
-            <div className="day-suggestions">
-              {dayAiSuggestions.map((suggestion, index) => <article key={`${suggestion.name}-${index}`}>
-                <div className="suggestion-time"><b>{suggestion.startTime || "09:00"}</b><span>→</span><b>{suggestion.endTime || "11:00"}</b></div>
-                <div><strong>{suggestion.name}</strong><small>{suggestion.location || selectedDay?.city}</small><p>{suggestion.description}</p><em>{suggestion.bookingNote}</em></div>
-                <div className="day-suggestion-action"><b>{euro.format(Number(suggestion.priceEstimate) || 0)}</b><button onClick={() => addDaySuggestion(suggestion)}>Aggiungi</button></div>
-              </article>)}
-            </div>
-            {aiSources.length > 0 && <div className="sources">{aiSources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.title} ↗</a>)}</div>}
-          </aside>
         </div>
       </section>}
 
@@ -988,15 +766,13 @@ export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string })
               <div className="transport-fields">
                 <label>Mezzo<input value={leg.mode} onChange={(event) => updateLeg(leg.id, { mode: event.target.value })} /></label>
                 <label>Durata<input value={leg.duration} onChange={(event) => updateLeg(leg.id, { duration: event.target.value })} /></label>
-                <label>Costo per 2<input type="number" min="0" value={leg.cost} onChange={(event) => updateLeg(leg.id, { cost: Number(event.target.value) || 0 })} /></label>
+                <label>Costo per 2<span className="money-input"><input type="number" min="0" value={leg.cost} onChange={(event) => updateLeg(leg.id, { cost: Number(event.target.value) || 0 })} /><select aria-label={`Valuta ${fromStop?.name} ${toStop?.name}`} value={leg.currency || "EUR"} onChange={(event) => updateLeg(leg.id, { currency: event.target.value as Currency })}><option value="EUR">€</option><option value="CNY">¥</option></select></span></label>
               </div>
               <p>{leg.note}</p>
-              <div className="transport-actions"><button className="primary small" onClick={() => runTransportSearch(leg)}>{transportSearchId === leg.id && transportSuggestions.length === 0 ? "Ricerca in corso…" : "✦ Cerca opzioni"}</button><button onClick={() => updateLeg(leg.id, { included: !leg.included })}>{leg.included ? "Togli dal viaggio" : "Aggiungi al viaggio"}</button></div>
-              {transportSearchId === leg.id && transportSuggestions.length > 0 && <div className="transport-suggestions">{transportSuggestions.map((suggestion, index) => <button key={`${suggestion.name}-${index}`} onClick={() => applyTransportSuggestion(leg, suggestion)}><b>{suggestion.name} · {euro.format(Number(suggestion.priceEstimate) || 0)}</b><span>{suggestion.description}</span></button>)}</div>}
+              <div className="transport-actions"><button onClick={() => updateLeg(leg.id, { included: !leg.included })}>{leg.included ? "Togli dal viaggio" : "Aggiungi al viaggio"}</button></div>
             </article>;
           })}
         </div>
-        {aiError && <p className="error wide">{aiError}</p>}
       </section>}
 
       {section === "budget" && <section className="panel-section">
@@ -1006,27 +782,37 @@ export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string })
           <article className="budget-category"><span>Hotel</span><b>{euro.format(hotelCost)}</b><small>{usedNights} notti · modifica il prezzo nelle tappe</small></article>
           <article className="budget-category"><span>Trasporti tra tappe</span><b>{euro.format(transportCost)}</b><small>{normalizedLegs.filter((leg) => leg.included).length} collegamenti inclusi</small></article>
           <article className="budget-category highlight"><span>Attività in agenda</span><b>{euro.format(activitiesCost)}</b><small>{budgetedActivities.length} esperienze pianificate</small></article>
-          <article className="budget-category editable"><span>Cibo e bevande</span><label><input type="number" min="0" value={foodBudget} onChange={(event) => setFoodBudget(Number(event.target.value) || 0)} /> €</label><small>Previsionale per due</small></article>
-          <article className="budget-category editable"><span>Trasporti locali</span><label><input type="number" min="0" value={localBudget} onChange={(event) => setLocalBudget(Number(event.target.value) || 0)} /> €</label><small>Didi, metro e transfer aeroporti</small></article>
-          <article className="budget-category editable"><span>Assicurazione, connettività, extra</span><label><input type="number" min="0" value={otherBudget} onChange={(event) => setOtherBudget(Number(event.target.value) || 0)} /> €</label><small>Margine di sicurezza</small></article>
+          <article className="budget-category"><span>Costi aggiunti</span><b>{euro.format(addedCostsTotal)}</b><small>{costEntries.length} voci libere</small></article>
+          <article className="budget-category editable"><span>Cambio yuan</span><label>1 € = <input type="number" min="0.01" step="0.01" value={cnyPerEuro} onChange={(event) => setCnyPerEuro(Math.max(0.01, Number(event.target.value) || 8))} /> ¥</label><small>Modificabile quando vuoi</small></article>
         </div>
-        <article className="card budget-detail"><div className="card-head"><div><p className="eyebrow">Dall’agenda</p><h2>Attività nel budget</h2></div><b>{euro.format(activitiesCost)}</b></div><div>{budgetedActivities.length === 0 ? <p className="empty padded">Aggiungi attività all’agenda per includerle nel budget.</p> : budgetedActivities.map((activity) => <div className="budget-row" key={`${activity.city}-${activity.id}`}><span>{activity.city}<small>{activity.date} · {activity.startTime}</small></span><div><b>{activity.name}</b><small>{activity.notes}</small></div><strong>{euro.format(activity.price)}</strong></div>)}</div></article>
+        <div className="budget-panels">
+          <article className="card cost-manager">
+            <div className="card-head"><div><p className="eyebrow">Euro o yuan</p><h2>Aggiungi e togli costi</h2></div><b>{euro.format(addedCostsTotal)}</b></div>
+            <div className="cost-list">
+              {costEntries.map((entry) => <div className="cost-row" key={entry.id}>
+                <input aria-label="Descrizione costo" value={entry.label} onChange={(event) => updateCostEntry(entry.id, { label: event.target.value })} />
+                <input aria-label={`Importo ${entry.label}`} type="number" min="0" value={entry.amount} onChange={(event) => updateCostEntry(entry.id, { amount: Number(event.target.value) || 0 })} />
+                <select aria-label={`Valuta ${entry.label}`} value={entry.currency} onChange={(event) => updateCostEntry(entry.id, { currency: event.target.value as Currency })}><option value="EUR">EUR €</option><option value="CNY">CNY ¥</option></select>
+                <strong>{entry.currency === "CNY" ? `≈ ${euro.format(toEuro(entry.amount, entry.currency))}` : formatCost(entry.amount, entry.currency)}</strong>
+                <button className="danger-text" onClick={() => removeCostEntry(entry.id)}>Togli</button>
+              </div>)}
+            </div>
+            <form className="add-cost" onSubmit={addCostEntry}>
+              <input required aria-label="Nuovo costo" placeholder="Es. Treno per Suzhou" value={newCost.label} onChange={(event) => setNewCost((current) => ({ ...current, label: event.target.value }))} />
+              <input required aria-label="Importo nuovo costo" type="number" min="0.01" step="0.01" placeholder="0" value={newCost.amount || ""} onChange={(event) => setNewCost((current) => ({ ...current, amount: Number(event.target.value) || 0 }))} />
+              <select aria-label="Valuta nuovo costo" value={newCost.currency} onChange={(event) => setNewCost((current) => ({ ...current, currency: event.target.value as Currency }))}><option value="EUR">EUR €</option><option value="CNY">CNY ¥</option></select>
+              <button className="primary" type="submit">+ Aggiungi</button>
+            </form>
+          </article>
+          <article className="card budget-detail"><div className="card-head"><div><p className="eyebrow">Dall’agenda</p><h2>Attività nel budget</h2></div><b>{euro.format(activitiesCost)}</b></div><div>{budgetedActivities.length === 0 ? <p className="empty padded">Aggiungi attività all’agenda per includerle nel budget.</p> : budgetedActivities.map((activity) => <div className="budget-row" key={`${activity.city}-${activity.id}`}><span>{activity.city}<small>{activity.date} · {activity.startTime}</small></span><div><b>{activity.name}</b><small>{activity.notes}</small></div><strong>{formatCost(activity.price, activity.currency)}</strong></div>)}</div></article>
+        </div>
       </section>}
 
-      {section === "planner" && <section className="planner-grid">
+      {section === "planner" && <section className="planner-grid simple">
         <div className="stack">
           <article className="card"><div className="card-head"><div><p className="eyebrow">Preparazione</p><h2>Checklist</h2></div><span>{checklist.filter(Boolean).length} / {checklist.length}</span></div><div className="checklist">{defaultChecklist.map((item, index) => <label key={item}><input type="checkbox" checked={Boolean(checklist[index])} onChange={() => setChecklist((current) => current.map((value, itemIndex) => itemIndex === index ? !value : value))} /><span>{item}</span></label>)}</div></article>
           <article className="card notes-card"><div className="card-head"><div><p className="eyebrow">Salvate sul dispositivo</p><h2>Note condivise</h2></div></div><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Hotel preferiti, ristoranti, idee e cose da ricordare…" /></article>
         </div>
-        <article className="card photo-lab">
-          <div className="card-head"><div><p className="eyebrow">Laboratorio in prova</p><h2>Foto & scritte cinesi</h2></div><label className="upload-button">+ Carica foto<input type="file" accept="image/*" multiple onChange={addPhotos} /></label></div>
-          <div className="privacy-note">Le foto restano su questo dispositivo. Solo quando premi “Traduci con Gemini” l’immagine viene inviata a Google per l’analisi.</div>
-          {aiError && <p className="error wide">{aiError}</p>}
-          <div className="photo-grid">
-            {photos.length === 0 && <div className="photo-empty"><span>相</span><b>Fotografa cartelli, menu e biglietti</b><p>Li ritroverai qui e potrai tradurli con Gemini.</p></div>}
-            {photos.map((photo) => <article className="photo-item" key={photo.id}><img src={photo.dataUrl} alt={photo.name} /><div><b>{photo.name}</b>{photo.chineseText && <p className="chinese">{photo.chineseText}</p>}{photo.pinyin && <small>{photo.pinyin}</small>}{photo.translation && <p>{photo.translation}</p>}{photo.notes && <small>{photo.notes}</small>}<div className="photo-actions"><button className="primary small" disabled={photoBusy === photo.id} onClick={() => analyzePhoto(photo)}>{photoBusy === photo.id ? "Analisi…" : "✦ Traduci con Gemini"}</button><button className="danger-text" onClick={() => deletePhoto(photo.id)}>Elimina</button></div></div></article>)}
-          </div>
-        </article>
       </section>}
     </main>
   );

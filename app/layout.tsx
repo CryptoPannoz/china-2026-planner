@@ -1,23 +1,18 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import "./globals.css";
 
-export async function generateMetadata(): Promise<Metadata> {
-  const requestHeaders = await headers();
-  const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host") || "localhost";
-  const protocol = requestHeaders.get("x-forwarded-proto") || (host.includes("localhost") ? "http" : "https");
-  const imageUrl = `${protocol}://${host}/og.png`;
-  const title = "Cina 2026 — Alberto & Sofia";
-  const description = "Agenda operativa giorno per giorno per organizzare orari, attività, trasporti, prenotazioni e budget del viaggio in Cina.";
+const title = "Cina 2026 — Alberto & Sofia";
+const description = "Agenda pubblica giorno per giorno per organizzare orari, attività, trasporti, costi e budget del viaggio in Cina.";
 
-  return {
-    title,
-    description,
-    robots: { index: false, follow: false, noarchive: true },
-    openGraph: { title, description, images: [{ url: imageUrl, width: 1536, height: 1024, alt: "Cina 2026 — Alberto & Sofia" }] },
-    twitter: { card: "summary_large_image", title, description, images: [imageUrl] },
-  };
-}
+export const metadata: Metadata = {
+  metadataBase: new URL("https://cryptopannoz.github.io/china-2026-planner/"),
+  title,
+  description,
+  icons: { icon: "favicon.svg" },
+  robots: { index: true, follow: true },
+  openGraph: { title, description, images: [{ url: "og.png", width: 1536, height: 1024, alt: title }] },
+  twitter: { card: "summary_large_image", title, description, images: ["og.png"] },
+};
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
