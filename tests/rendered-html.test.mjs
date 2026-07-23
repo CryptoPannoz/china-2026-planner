@@ -81,6 +81,10 @@ test("struttura agenda, mappe e registro condiviso", async () => {
   assert.match(planner, /Link condiviso WeChat/);
   assert.match(planner, /Link condiviso Alipay/);
   assert.match(planner, /amapStopUrl/);
+  assert.match(planner, /Panoramica itinerario · OpenStreetMap/);
+  assert.match(planner, /La rotta completa, tappa per tappa/);
+  assert.match(planner, /fitBounds/);
+  assert.doesNotMatch(planner, /Mappa principale · Amap/);
   assert.doesNotMatch(planner, /<option value="hotel">Hotel \/ notte<\/option>/);
   assert.match(rules, /change-log/);
   assert.match(rules, /allow read, create: if isPlannerMember/);

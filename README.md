@@ -14,7 +14,7 @@ Permette di:
 - inserire costi in euro oppure yuan;
 - modificare il cambio yuan/euro;
 - aggiungere e togliere liberamente voci di costo;
-- aprire tappe, luoghi e destinazioni direttamente in Amap;
+- vedere l’intero percorso su OpenStreetMap e aprire singole tappe, attività, hotel e destinazioni direttamente in Amap;
 - salvare collegamenti condivisi da WeChat e Alipay;
 - vedere chi ha aggiunto, modificato o cancellato cosa;
 - caricare una copertina privata, visibile dopo l'accesso;

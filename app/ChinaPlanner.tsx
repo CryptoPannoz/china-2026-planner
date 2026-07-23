@@ -111,6 +111,7 @@ type ChangeLogEntry = {
 };
 
 type LeafletMap = {
+  fitBounds(coords: Array<[number, number]>, options?: Record<string, unknown>): LeafletMap;
   invalidateSize(): void;
   remove(): void;
   setView(coords: [number, number], zoom: number): LeafletMap;
@@ -526,8 +527,9 @@ function InteractiveRouteMap({
         }).addTo(createdMap as LeafletMap).bindTooltip(`${from.name} → ${to.name} · ${leg.mode}`);
       });
 
-      const initialZoom = containerRef.current.clientWidth < 640 ? 4 : 5;
-      createdMap.setView([32.2, 111.7], initialZoom);
+      createdMap.fitBounds(stops.map((stop) => [stop.lat, stop.lng] as [number, number]), {
+        padding: containerRef.current.clientWidth < 640 ? [18, 18] : [38, 38],
+      });
       requestAnimationFrame(() => createdMap?.invalidateSize());
       setMapError("");
       setMapReady(true);
@@ -548,7 +550,7 @@ function InteractiveRouteMap({
       <div ref={containerRef} className="real-map" aria-label="Mappa interattiva dell’itinerario in Cina" />
       {!mapReady && !mapError && <div className="map-loading">Caricamento mappa geografica…</div>}
       {mapError && <div className="map-error">{mapError}</div>}
-      {mapReady && <div className="map-tools"><button onClick={() => mapRef.current?.setView([32.2, 111.7], (containerRef.current?.clientWidth || 800) < 640 ? 4 : 5)}>Rotta completa</button><button onClick={() => mapRef.current?.setView([31.1, 120.7], 8)}>Zoom Wuzhen–Shanghai</button></div>}
+      {mapReady && <div className="map-tools"><button onClick={() => mapRef.current?.fitBounds(stops.map((stop) => [stop.lat, stop.lng] as [number, number]), { padding: [30, 30] })}>Rotta completa</button><button onClick={() => mapRef.current?.setView([31.1, 120.7], 8)}>Zoom Wuzhen–Shanghai</button></div>}
       <div className="map-legend"><span><i /> Tappa</span><span><i className="route" /> Trasporto incluso</span><span><i className="route off" /> Escluso</span></div>
     </div>
   );
@@ -1188,12 +1190,12 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
         <section className="section-grid">
           <div className="stack">
             <article className="card map-card">
-              <div className="card-head"><div><p className="eyebrow">Mappa principale · Amap / Gaode</p><h2>Apri le tappe nella mappa cinese</h2></div><span className="subtle">Funziona da telefono e computer</span></div>
-              <div className="amap-hub">
-                <div className="amap-copy"><span className="amap-mark">高</span><div><b>{selectedStop.name}</b><p>Ricerca, punti di interesse e navigazione si aprono direttamente in Amap. Su telefono prova ad avviare anche l’app.</p><a href={amapStopUrl(selectedStop)} target="_blank" rel="noreferrer">Apri {selectedStop.name} in Amap ↗</a></div></div>
-                <div className="amap-stops">{stops.map((stop, index) => <a key={stop.id} className={selectedStop.id === stop.id ? "active" : ""} href={amapStopUrl(stop)} target="_blank" rel="noreferrer" onMouseEnter={() => setSelectedStopId(stop.id)}><span>{index + 1}</span>{stop.name}</a>)}</div>
+              <div className="card-head"><div><p className="eyebrow">Panoramica itinerario · OpenStreetMap</p><h2>La rotta completa, tappa per tappa</h2></div><span className="subtle">Clicca i punti numerati per selezionare una città</span></div>
+              <InteractiveRouteMap stops={stops} legs={normalizedLegs} onSelect={setSelectedStopId} />
+              <div className="china-map-note">
+                <div><b>Amap resta la mappa pratica per quando sarete in Cina</b><span>Ogni hotel, attività e trasporto ha il proprio collegamento; qui puoi aprire anche la città selezionata.</span></div>
+                <a href={amapStopUrl(selectedStop)} target="_blank" rel="noreferrer">Apri {selectedStop.name} in Amap ↗</a>
               </div>
-              <details className="overview-map"><summary>Mostra anche la panoramica grafica delle tappe</summary><InteractiveRouteMap stops={stops} legs={normalizedLegs} onSelect={setSelectedStopId} /></details>
             </article>
 
             <article className="card">
@@ -1234,7 +1236,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                 {selectedStop.activities.length === 0 && <p className="empty">Nessuna idea salvata per questa tappa.</p>}
                 {selectedStop.activities.map((activity) => <div className={`activity-row ${scheduleItems.some((item) => item.sourceActivityId === activity.id) ? "selected" : ""}`} key={activity.id}>
                   <button className="check" title="Aggiungi alla prima giornata disponibile" onClick={() => scheduleActivity(selectedStop, activity)}>{scheduleItems.some((item) => item.sourceActivityId === activity.id) ? "✓" : "+"}</button>
-                  <div><b>{activity.name}</b><small>{activity.description}</small>{activity.sourceUrl && <a href={activity.sourceUrl} target="_blank" rel="noreferrer">Fonte ↗</a>}</div>
+                  <div><b>{activity.name}</b><small>{activity.description}</small><span className="activity-links"><a href={amapSearchUrl(activity.name, selectedStop.name)} target="_blank" rel="noreferrer">Amap ↗</a>{activity.sourceUrl && <a href={activity.sourceUrl} target="_blank" rel="noreferrer">Fonte ↗</a>}</span></div>
                   <label className="money-input"><input type="number" min="0" value={activity.price} onChange={(event) => updateActivity(selectedStop.id, activity.id, { price: Number(event.target.value) || 0 })} /><select aria-label={`Valuta ${activity.name}`} value={activity.currency || "EUR"} onChange={(event) => updateActivity(selectedStop.id, activity.id, { currency: event.target.value as Currency })}><option value="EUR">€</option><option value="CNY">¥</option></select></label>
                 </div>)}
               </div>

@@ -25,9 +25,10 @@ La URI API ufficiale di Amap consente di aprire marker e navigazione sia da desk
 
 Una mappa Amap incorporata dentro GitHub Pages richiede una chiave Web JS e il
 relativo codice di sicurezza. Per non pubblicare credenziali in chiaro, la
-versione attuale usa la URI API ufficiale come mappa principale: le tappe si
-aprono realmente in Amap e l’app mobile viene richiamata quando disponibile.
-La vecchia panoramica Leaflet resta disponibile soltanto come vista secondaria.
+versione attuale usa OpenStreetMap come panoramica principale dell’intero
+itinerario e la URI API ufficiale di Amap per i singoli hotel, attività,
+trasporti e città. I luoghi si aprono realmente in Amap e l’app mobile viene
+richiamata quando disponibile.
 
 ## Collegamenti WeChat e Alipay
 
