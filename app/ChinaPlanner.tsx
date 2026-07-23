@@ -549,7 +549,8 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     setSyncStatus("saving");
     const timer = window.setTimeout(async () => {
       try {
-        await setDoc(doc(db, "travel-plans", "china-2026"), { ...planData, updatedAt: serverTimestamp() });
+        const safePlanData = JSON.parse(serialized) as PlanData;
+        await setDoc(doc(db, "travel-plans", "china-2026"), { ...safePlanData, updatedAt: serverTimestamp() });
         lastCloudValueRef.current = serialized;
         setSyncStatus("synced");
       } catch {

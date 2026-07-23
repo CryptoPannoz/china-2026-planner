@@ -24,6 +24,7 @@ googleProvider.setCustomParameters({ prompt: "select_account" });
 
 try {
   initializeFirestore(app, {
+    ignoreUndefinedProperties: true,
     localCache: persistentLocalCache({
       tabManager: persistentMultipleTabManager(),
     }),
