@@ -87,6 +87,20 @@ type CostEntry = {
   currency: Currency;
 };
 
+type Payer = "alberto" | "sofia";
+
+type ExpenseCategory = "voli" | "hotel" | "trasporti" | "attivita" | "cibo" | "extra";
+
+type Expense = {
+  id: string;
+  date: string;
+  label: string;
+  amount: number;
+  currency: Currency;
+  paidBy: Payer;
+  category: ExpenseCategory;
+};
+
 type PlanData = {
   itineraryVersion: number;
   stops: Stop[];
@@ -97,6 +111,7 @@ type PlanData = {
   notes: string;
   cnyPerEuro: number;
   costEntries: CostEntry[];
+  expenses: Expense[];
   customCategories: string[];
   coverPhoto?: string;
 };
@@ -166,6 +181,15 @@ const ALLOWED_EMAILS = new Set([
   "bebroggi@gmail.com",
   "sofiakovaleva1998@gmail.com",
 ]);
+const PAYER_LABELS: Record<Payer, string> = { alberto: "Alberto", sofia: "Sofia" };
+const EXPENSE_CATEGORIES: Array<{ value: ExpenseCategory; label: string }> = [
+  { value: "hotel", label: "Hotel" },
+  { value: "trasporti", label: "Trasporti" },
+  { value: "attivita", label: "Attività" },
+  { value: "cibo", label: "Cibo" },
+  { value: "voli", label: "Voli" },
+  { value: "extra", label: "Extra" },
+];
 
 const initialStops: Stop[] = [
   {
@@ -205,7 +229,7 @@ const initialLegs: Leg[] = [
 ];
 
 const initialSchedule: ScheduleItem[] = [
-  { id: "d01-arrival", date: "2026-11-17", stopId: "beijing", startTime: "12:25", endTime: "15:30", name: "Arrivo a Pechino e transfer", category: "trasporto", location: "PEK → hotel", notes: "Ritiro bagagli, Alipay pronto e check-in. Non fissare attività impegnative.", price: 0, bookingStatus: "prenotato" },
+  { id: "d01-arrival", date: "2026-11-17", stopId: "beijing", startTime: "12:25", endTime: "15:30", name: "Arrivo a Pechino e transfer", category: "trasporto", location: "PEK → hotel", notes: "Ritiro bagagli e check-in. Non fissare attività impegnative.", price: 0, bookingStatus: "prenotato" },
   { id: "d01-evening", date: "2026-11-17", stopId: "beijing", startTime: "17:30", endTime: "20:00", name: "Passeggiata nei hutong e cena", category: "cibo", location: "Shichahai / Gulou", notes: "Serata leggera per assorbire il fuso orario.", price: 35, bookingStatus: "non-serve" },
   { id: "d02-forbidden", date: "2026-11-18", stopId: "beijing", startTime: "08:30", endTime: "13:00", name: "Tian’anmen e Città Proibita", category: "visita", location: "Ingresso Meridian Gate", notes: "Passaporti con sé. Prenotare appena apre la finestra ufficiale.", price: 24, bookingStatus: "da-prenotare", sourceActivityId: "forbidden-city" },
   { id: "d02-jingshan", date: "2026-11-18", stopId: "beijing", startTime: "14:00", endTime: "17:00", name: "Jingshan e Beihai", category: "visita", location: "Jingshan Park", notes: "Salita al belvedere prima del tramonto.", price: 5, bookingStatus: "non-serve" },
@@ -246,7 +270,6 @@ const defaultChecklist = [
   "Risolvere Fenghuang → Wuzhen",
   "Prenotare ingressi di Pechino",
   "Verificare visto / ingresso in Cina",
-  "Installare Alipay e WeChat Pay",
   "Preparare eSIM, VPN e mappe offline",
   "Confermare assicurazione viaggio",
 ];
@@ -282,10 +305,11 @@ function normalizePlanData(value: unknown): PlanData | null {
     legs,
     scheduleItems,
     hotelStays,
-    checklist: Array.isArray(data.checklist) ? data.checklist : defaultChecklist.map(() => false),
+    checklist: Array.isArray(data.checklist) && data.checklist.length === defaultChecklist.length ? data.checklist : defaultChecklist.map(() => false),
     notes: typeof data.notes === "string" ? data.notes : "",
     cnyPerEuro: typeof data.cnyPerEuro === "number" ? data.cnyPerEuro : 8,
     costEntries: Array.isArray(data.costEntries) ? data.costEntries : [],
+    expenses: Array.isArray(data.expenses) ? data.expenses : [],
     customCategories: Array.isArray(data.customCategories) ? data.customCategories.filter((item): item is string => typeof item === "string") : [],
     coverPhoto: typeof data.coverPhoto === "string" ? data.coverPhoto : "",
   };
@@ -371,6 +395,10 @@ function mapLinkFor(item: ScheduleItem, city: string) {
   if (customLink) return customLink;
   const place = item.location.split("→").at(-1)?.trim() || item.location.trim();
   return place ? amapSearchUrl(place, city) : "";
+}
+
+function webSearchUrl(queryText: string) {
+  return `https://www.google.com/search?q=${encodeURIComponent(queryText)}`;
 }
 
 function safeExternalLink(value: string | undefined) {
@@ -617,7 +645,7 @@ export function ChinaPlanner() {
 }
 
 function PlannerApp({ currentUser }: { currentUser: User }) {
-  const [section, setSection] = useState("calendar");
+  const [section, setSection] = useState("itinerary");
   const [stops, setStops] = useState<Stop[]>(initialStops);
   const [legs, setLegs] = useState<Leg[]>(initialLegs);
   const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>(initialSchedule);
@@ -635,8 +663,6 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     location: "",
     transportMode: "",
     mapUrl: "",
-    wechatUrl: "",
-    alipayUrl: "",
     notes: "",
     price: 0,
     currency: "EUR" as Currency,
@@ -653,8 +679,6 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     bookingStatus: "da-prenotare" as HotelStay["bookingStatus"],
     bookingUrl: "",
     mapUrl: "",
-    wechatUrl: "",
-    alipayUrl: "",
     notes: "",
   });
   const [checklist, setChecklist] = useState<boolean[]>(defaultChecklist.map(() => false));
@@ -666,6 +690,9 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     { id: "extras", label: "Assicurazione, connettività ed extra", amount: 720, currency: "EUR" },
   ]);
   const [newCost, setNewCost] = useState({ label: "", amount: 0, currency: "EUR" as Currency });
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [newExpense, setNewExpense] = useState({ label: "", amount: 0, currency: "EUR" as Currency, paidBy: "alberto" as Payer, category: "cibo" as ExpenseCategory });
+  const [newClouActivity, setNewClouActivity] = useState({ name: "", price: 0 });
   const [customCategories, setCustomCategories] = useState<string[]>([]);
   const [newCategory, setNewCategory] = useState("");
   const [coverPhoto, setCoverPhoto] = useState("");
@@ -690,6 +717,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
           setNotes(saved.notes);
           setCnyPerEuro(saved.cnyPerEuro);
           setCostEntries(saved.costEntries);
+          setExpenses(saved.expenses);
           setCustomCategories(saved.customCategories);
           setCoverPhoto(saved.coverPhoto || "");
         }
@@ -724,6 +752,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
         setNotes(remotePlan.notes);
         setCnyPerEuro(remotePlan.cnyPerEuro);
         setCostEntries(remotePlan.costEntries);
+        setExpenses(remotePlan.expenses);
         setCustomCategories(remotePlan.customCategories);
         setCoverPhoto(remotePlan.coverPhoto || "");
         localStorage.setItem(PLAN_STORAGE_KEY, serialized);
@@ -760,6 +789,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
         cnyPerEuro: 8,
         customCategories: [],
         coverPhoto: "",
+        expenses: [],
         costEntries: [
           { id: "food", label: "Cibo e bevande", amount: 900, currency: "EUR" },
           { id: "local", label: "Trasporti locali", amount: 300, currency: "EUR" },
@@ -800,6 +830,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
       notes,
       cnyPerEuro,
       costEntries,
+      expenses,
       customCategories,
       coverPhoto,
     };
@@ -821,7 +852,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     }, 700);
 
     return () => window.clearTimeout(timer);
-  }, [stops, legs, scheduleItems, hotelStays, checklist, notes, cnyPerEuro, costEntries, customCategories, coverPhoto, hydrated, cloudReady]);
+  }, [stops, legs, scheduleItems, hotelStays, checklist, notes, cnyPerEuro, costEntries, expenses, customCategories, coverPhoto, hydrated, cloudReady]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -910,6 +941,23 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
   const plannedDayCount = calendarDays.filter((day) => scheduleItems.some((item) => item.date === day.dateKey)).length;
   const dayCost = selectedDayItems.reduce((sum, item) => sum + toEuro(item.price, item.currency), 0);
   const bookingCount = scheduleItems.filter((item) => item.bookingStatus === "da-prenotare").length;
+  const spentTotal = expenses.reduce((sum, expense) => sum + toEuro(expense.amount, expense.currency), 0);
+  const spentByPayer: Record<Payer, number> = {
+    alberto: expenses.filter((expense) => expense.paidBy === "alberto").reduce((sum, expense) => sum + toEuro(expense.amount, expense.currency), 0),
+    sofia: expenses.filter((expense) => expense.paidBy === "sofia").reduce((sum, expense) => sum + toEuro(expense.amount, expense.currency), 0),
+  };
+  const splitBalance = (spentByPayer.alberto - spentByPayer.sofia) / 2;
+  const spentInCategory = (categories: ExpenseCategory[]) => expenses.filter((expense) => categories.includes(expense.category)).reduce((sum, expense) => sum + toEuro(expense.amount, expense.currency), 0);
+  const budgetComparison = [
+    { key: "voli", label: "Voli internazionali", note: "Costo confermato", planned: FLIGHTS_COST, spent: spentInCategory(["voli"]) },
+    { key: "hotel", label: "Hotel", note: `${hotelStays.reduce((sum, stay) => sum + hotelNights(stay), 0)} notti pianificate`, planned: hotelCost, spent: spentInCategory(["hotel"]) },
+    { key: "trasporti", label: "Trasporti", note: `${normalizedLegs.filter((leg) => leg.included).length} tratte tra le tappe`, planned: transportCost, spent: spentInCategory(["trasporti"]) },
+    { key: "attivita", label: "Attività a pagamento", note: `${budgetedActivities.length} blocchi in agenda con costo`, planned: activitiesCost, spent: spentInCategory(["attivita"]) },
+    { key: "cibo-extra", label: "Cibo & extra", note: `${costEntries.length} voci pianificate`, planned: addedCostsTotal, spent: spentInCategory(["cibo", "extra"]) },
+  ];
+  const dayExpenses = expenses.filter((expense) => expense.date === selectedDay?.dateKey).sort((a, b) => a.id.localeCompare(b.id));
+  const dayExpensesTotal = dayExpenses.reduce((sum, expense) => sum + toEuro(expense.amount, expense.currency), 0);
+  const selectedStopDays = calendarDays.filter((day) => day.stopId === selectedStop.id);
   const categoryOptions = useMemo(() => [
     ...BUILT_IN_CATEGORIES,
     ...customCategories.map((category) => ({ value: category, label: category })),
@@ -979,7 +1027,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
       notes: newHotel.notes.trim(),
     };
     setHotelStays((current) => [...current, stay]);
-    setNewHotel((current) => ({ ...current, name: "", address: "", nightlyPrice: 0, bookingUrl: "", mapUrl: "", wechatUrl: "", alipayUrl: "", notes: "" }));
+    setNewHotel((current) => ({ ...current, name: "", address: "", nightlyPrice: 0, bookingUrl: "", mapUrl: "", notes: "" }));
     recordChange("Hotel aggiunto", `${stay.name} · ${stay.checkInDate} → ${stay.checkOutDate}`);
   }
 
@@ -1046,7 +1094,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
       currency: newScheduleItem.currency,
     };
     setScheduleItems((current) => [...current, item]);
-    setNewScheduleItem((current) => ({ ...current, name: "", fromLocation: "", location: "", transportMode: "", mapUrl: "", wechatUrl: "", alipayUrl: "", notes: "", price: 0 }));
+    setNewScheduleItem((current) => ({ ...current, name: "", fromLocation: "", location: "", transportMode: "", mapUrl: "", notes: "", price: 0 }));
     recordChange(`${KIND_LABELS[item.kind || "activity"]} aggiunto`, `${item.name} · ${item.date} ${item.startTime}–${item.endTime}`);
   }
 
@@ -1120,6 +1168,51 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     if (removed) recordChange("Costo eliminato", `${removed.label} · ${formatCost(removed.amount, removed.currency)}`);
   }
 
+  function addExpense(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedDay || !newExpense.label.trim() || newExpense.amount <= 0) return;
+    const expense: Expense = {
+      id: uid("spesa"),
+      date: selectedDay.dateKey,
+      label: newExpense.label.trim(),
+      amount: Number(newExpense.amount) || 0,
+      currency: newExpense.currency,
+      paidBy: newExpense.paidBy,
+      category: newExpense.category,
+    };
+    setExpenses((current) => [...current, expense]);
+    setNewExpense((current) => ({ ...current, label: "", amount: 0 }));
+    recordChange("Spesa registrata", `${expense.label} · ${formatCost(expense.amount, expense.currency)} · ha pagato ${PAYER_LABELS[expense.paidBy]}`);
+  }
+
+  function removeExpense(id: string) {
+    const removed = expenses.find((expense) => expense.id === id);
+    setExpenses((current) => current.filter((expense) => expense.id !== id));
+    if (removed) recordChange("Spesa eliminata", `${removed.label} · ${formatCost(removed.amount, removed.currency)}`);
+  }
+
+  function addClouActivity(event: FormEvent) {
+    event.preventDefault();
+    const name = newClouActivity.name.trim();
+    if (!name) return;
+    const activity: Activity = { id: uid("clou"), name, description: "", price: Number(newClouActivity.price) || 0, currency: "EUR", selected: false };
+    setStops((current) => current.map((stop) => stop.id !== selectedStop.id ? stop : { ...stop, activities: [...stop.activities, activity] }));
+    setNewClouActivity({ name: "", price: 0 });
+    recordChange("Attività clou aggiunta", `${selectedStop.name}: ${name}`);
+  }
+
+  function removeClouActivity(stopId: string, activityId: string) {
+    const stop = stops.find((item) => item.id === stopId);
+    const removed = stop?.activities.find((activity) => activity.id === activityId);
+    setStops((current) => current.map((item) => item.id !== stopId ? item : { ...item, activities: item.activities.filter((activity) => activity.id !== activityId) }));
+    if (removed) recordChange("Attività clou rimossa", `${stop?.name || "Tappa"}: ${removed.name}`);
+  }
+
+  function openDayInAgenda(dateValue: string) {
+    setSelectedDate(dateValue);
+    setSection("calendar");
+  }
+
   function prepareNewTransport() {
     setNewScheduleItem((current) => ({
       ...current,
@@ -1137,10 +1230,10 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
 
   const navItems = [
     ["itinerary", "Itinerario"],
+    ["calendar", "Agenda & spese"],
     ["hotels", "Hotel"],
-    ["calendar", "Agenda giorno per giorno"],
     ["transport", "Trasporti"],
-    ["budget", "Budget"],
+    ["budget", "Budget & bilancio"],
     ["planner", "Checklist & note"],
     ["history", "Modifiche"],
   ];
@@ -1187,6 +1280,16 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
       </div>
 
       {section === "itinerary" && (
+        <>
+        <div className="trip-strip" aria-label="I 17 giorni del viaggio">
+          {calendarDays.map((entry, index) => (
+            <button key={entry.dateKey} className={`${entry.stopId === selectedStop.id ? "current" : ""} ${entry.type}`} onClick={() => setSelectedStopId(entry.stopId)} title={`Giorno ${index + 1} · ${entry.city}`}>
+              <small>G{index + 1}</small>
+              <b>{shortDate.format(entry.date)}</b>
+              <span>{entry.city}</span>
+            </button>
+          ))}
+        </div>
         <section className="section-grid">
           <div className="stack">
             <article className="card map-card">
@@ -1227,22 +1330,47 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
           </div>
 
           <aside className="card city-workspace">
-            <div className="card-head sticky"><div><p className="eyebrow">City box</p><h2>{selectedStop.name}</h2></div><span className="city-dates">{shortDate.format(timeline.find((item) => item.stop.id === selectedStop.id)?.arrival || ARRIVAL_DATE)}</span></div>
+            <div className="card-head sticky"><div><p className="eyebrow">Tappa selezionata</p><h2>{selectedStop.name}</h2></div><span className="city-dates">{shortDate.format(timeline.find((item) => item.stop.id === selectedStop.id)?.arrival || ARRIVAL_DATE)} → {shortDate.format(timeline.find((item) => item.stop.id === selectedStop.id)?.departure || DEPARTURE_DATE)}</span></div>
             <div className="city-body">
-              <div className="mini-budget"><span>Già in agenda</span><b>{scheduleItems.filter((item) => item.stopId === selectedStop.id).length}</b><small>{euro.format(scheduleItems.filter((item) => item.stopId === selectedStop.id).reduce((sum, item) => sum + toEuro(item.price, item.currency), 0))} nel budget</small></div>
+              <div className="mini-budget"><span>Blocchi in agenda</span><b>{scheduleItems.filter((item) => item.stopId === selectedStop.id).length}</b><small>{euro.format(scheduleItems.filter((item) => item.stopId === selectedStop.id).reduce((sum, item) => sum + toEuro(item.price, item.currency), 0))} nel budget</small></div>
               <button className="hotel-field hotel-link" onClick={() => setSection("hotels")}><span>⌂ Hotel e date del soggiorno</span><strong>{hotelStays.filter((stay) => stay.stopId === selectedStop.id).length || "—"} →</strong></button>
-              <h3>Idee da mettere in agenda</h3>
+
+              <h3>Agenda giorno per giorno</h3>
+              <div className="city-days">
+                {selectedStopDays.map((day) => {
+                  const dayItems = scheduleItems.filter((item) => item.date === day.dateKey).sort((a, b) => a.startTime.localeCompare(b.startTime));
+                  const dayNumber = calendarDays.findIndex((entry) => entry.dateKey === day.dateKey) + 1;
+                  return <button className="city-day" key={day.dateKey} onClick={() => openDayInAgenda(day.dateKey)}>
+                    <div className="city-day-head"><small>G{dayNumber}</small><b>{longDate.format(day.date)}</b><i>Apri →</i></div>
+                    {dayItems.length === 0 ? <p className="empty">Giornata ancora libera</p> : <ul>
+                      {dayItems.map((item) => <li key={item.id} className={`kind-${scheduleKind(item)}`}><span>{item.startTime}</span>{item.name}{item.price > 0 && <em>{formatCost(item.price, item.currency)}</em>}</li>)}
+                    </ul>}
+                  </button>;
+                })}
+              </div>
+
+              <h3>Attività clou · le imperdibili</h3>
               <div className="activity-list">
-                {selectedStop.activities.length === 0 && <p className="empty">Nessuna idea salvata per questa tappa.</p>}
+                {selectedStop.activities.length === 0 && <p className="empty">Nessuna attività clou salvata: aggiungila qui sotto o cerca idee sul web.</p>}
                 {selectedStop.activities.map((activity) => <div className={`activity-row ${scheduleItems.some((item) => item.sourceActivityId === activity.id) ? "selected" : ""}`} key={activity.id}>
-                  <button className="check" title="Aggiungi alla prima giornata disponibile" onClick={() => scheduleActivity(selectedStop, activity)}>{scheduleItems.some((item) => item.sourceActivityId === activity.id) ? "✓" : "+"}</button>
-                  <div><b>{activity.name}</b><small>{activity.description}</small><span className="activity-links"><a href={amapSearchUrl(activity.name, selectedStop.name)} target="_blank" rel="noreferrer">Amap ↗</a>{activity.sourceUrl && <a href={activity.sourceUrl} target="_blank" rel="noreferrer">Fonte ↗</a>}</span></div>
-                  <label className="money-input"><input type="number" min="0" value={activity.price} onChange={(event) => updateActivity(selectedStop.id, activity.id, { price: Number(event.target.value) || 0 })} /><select aria-label={`Valuta ${activity.name}`} value={activity.currency || "EUR"} onChange={(event) => updateActivity(selectedStop.id, activity.id, { currency: event.target.value as Currency })}><option value="EUR">€</option><option value="CNY">¥</option></select></label>
+                  <button className="check" title="Metti in agenda nella prima giornata disponibile" onClick={() => scheduleActivity(selectedStop, activity)}>{scheduleItems.some((item) => item.sourceActivityId === activity.id) ? "✓" : "+"}</button>
+                  <div><b>{activity.name}</b>{activity.description && <small>{activity.description}</small>}<span className="activity-links"><a href={webSearchUrl(`${activity.name} ${selectedStop.name} biglietti orari`)} target="_blank" rel="noreferrer">Cerca sul web ↗</a><a href={amapSearchUrl(activity.name, selectedStop.name)} target="_blank" rel="noreferrer">Amap ↗</a>{activity.sourceUrl && <a href={activity.sourceUrl} target="_blank" rel="noreferrer">Fonte ↗</a>}</span></div>
+                  <div className="clou-side">
+                    <label className="money-input"><input type="number" min="0" value={activity.price} onChange={(event) => updateActivity(selectedStop.id, activity.id, { price: Number(event.target.value) || 0 })} /><select aria-label={`Valuta ${activity.name}`} value={activity.currency || "EUR"} onChange={(event) => updateActivity(selectedStop.id, activity.id, { currency: event.target.value as Currency })}><option value="EUR">€</option><option value="CNY">¥</option></select></label>
+                    <button className="danger-text" onClick={() => removeClouActivity(selectedStop.id, activity.id)}>Togli</button>
+                  </div>
                 </div>)}
               </div>
+              <form className="add-clou" onSubmit={addClouActivity}>
+                <input value={newClouActivity.name} placeholder={`Nuova attività clou a ${selectedStop.name}`} onChange={(event) => setNewClouActivity((current) => ({ ...current, name: event.target.value }))} />
+                <input type="number" min="0" step="0.01" aria-label="Costo stimato in euro" placeholder="€ per 2" value={newClouActivity.price || ""} onChange={(event) => setNewClouActivity((current) => ({ ...current, price: Number(event.target.value) || 0 }))} />
+                <button type="submit">+ Aggiungi</button>
+              </form>
+              <a className="clou-search" href={webSearchUrl(`cosa vedere a ${selectedStop.name} Cina attrazioni imperdibili`)} target="_blank" rel="noreferrer">🔍 Cerca idee sul web per {selectedStop.name} ↗</a>
             </div>
           </aside>
         </section>
+        </>
       )}
 
       {section === "hotels" && <section className="panel-section">
@@ -1254,8 +1382,6 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
           {[...hotelStays].sort((a, b) => a.checkInDate.localeCompare(b.checkInDate)).map((stay) => {
             const stop = stops.find((item) => item.id === stay.stopId);
             const mapUrl = safeExternalLink(stay.mapUrl) || amapSearchUrl(stay.address || stay.name, stop?.name || "");
-            const wechatUrl = safeExternalLink(stay.wechatUrl);
-            const alipayUrl = safeExternalLink(stay.alipayUrl);
             const bookingUrl = safeExternalLink(stay.bookingUrl);
             return <article className="card hotel-stay-card" key={stay.id}>
               <div className="hotel-date-band">
@@ -1274,13 +1400,11 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                   <label>Stato<select value={stay.bookingStatus} onChange={(event) => { updateHotelStay(stay.id, { bookingStatus: event.target.value as HotelStay["bookingStatus"] }); recordChange("Stato hotel modificato", `${stay.name}: ${event.target.options[event.target.selectedIndex].text}`); }}><option value="da-prenotare">Da prenotare</option><option value="prenotato">Prenotato</option></select></label>
                   <label className="wide">Note<textarea value={stay.notes} placeholder="Colazione, cancellazione, camera, deposito bagagli…" onChange={(event) => updateHotelStay(stay.id, { notes: event.target.value })} onBlur={() => recordChange("Note hotel aggiornate", stay.name)} /></label>
                 </div>
-                <details className="app-links-editor"><summary>Link prenotazione, mappa, WeChat e Alipay</summary><div>
+                <details className="app-links-editor"><summary>Link prenotazione e mappa</summary><div>
                   <label>Prenotazione<input value={stay.bookingUrl || ""} placeholder="https://…" onChange={(event) => updateHotelStay(stay.id, { bookingUrl: event.target.value })} /></label>
                   <label>Link Amap<input value={stay.mapUrl || ""} placeholder="Automatico se vuoto" onChange={(event) => updateHotelStay(stay.id, { mapUrl: event.target.value })} /></label>
-                  <label>Link condiviso WeChat<input value={stay.wechatUrl || ""} placeholder="Incolla il link ricevuto" onChange={(event) => updateHotelStay(stay.id, { wechatUrl: event.target.value })} /></label>
-                  <label>Link condiviso Alipay<input value={stay.alipayUrl || ""} placeholder="Incolla il link o Mini Program" onChange={(event) => updateHotelStay(stay.id, { alipayUrl: event.target.value })} /></label>
                 </div></details>
-                <div className="hotel-actions"><a href={mapUrl} target="_blank" rel="noreferrer">Amap ↗</a>{bookingUrl && <a href={bookingUrl} target="_blank" rel="noreferrer">Prenotazione ↗</a>}{wechatUrl && <a href={wechatUrl} target="_blank" rel="noreferrer">WeChat ↗</a>}{alipayUrl && <a href={alipayUrl} target="_blank" rel="noreferrer">Alipay ↗</a>}</div>
+                <div className="hotel-actions"><a href={mapUrl} target="_blank" rel="noreferrer">Amap ↗</a>{bookingUrl && <a href={bookingUrl} target="_blank" rel="noreferrer">Prenotazione ↗</a>}</div>
               </div>
             </article>;
           })}
@@ -1335,7 +1459,8 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                 <span><b>{selectedDayItems.length}</b> blocchi</span>
                 <span><b>{selectedDayItems[0]?.startTime || "—"}</b> inizio</span>
                 <span><b>{selectedDayItems.at(-1)?.endTime || "—"}</b> fine</span>
-                <span><b>{euro.format(dayCost)}</b> giornata</span>
+                <span><b>{euro.format(dayCost)}</b> pianificato</span>
+                <span><b>{euro.format(dayExpensesTotal)}</b> speso</span>
               </div>
             </article>
             <div className="day-hotels">
@@ -1379,18 +1504,14 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                     {kind === "transport" && <><label>Mezzo<input value={item.transportMode || ""} placeholder="Treno, Didi, metro…" onChange={(event) => updateScheduleItem(item.id, { transportMode: event.target.value })} onBlur={(event) => logScheduleField(item, "mezzo", event.target.value)} /></label><label>Da<input value={item.fromLocation || ""} placeholder="Hotel o punto di partenza" onChange={(event) => updateScheduleItem(item.id, { fromLocation: event.target.value })} onBlur={(event) => logScheduleField(item, "partenza", event.target.value)} /></label></>}
                     <label className={kind === "activity" ? "wide" : ""}>{kind === "transport" ? "A / destinazione" : kind === "hotel" ? "Hotel / indirizzo" : "Luogo"}<input value={item.location} placeholder="Nome anche in cinese, indirizzo o stazione" onChange={(event) => updateScheduleItem(item.id, { location: event.target.value })} onBlur={(event) => logScheduleField(item, "luogo", event.target.value)} /></label>
                   </div>
-                  <details className="app-links-editor schedule-links"><summary>Link Amap, WeChat e Alipay</summary><div>
+                  <details className="app-links-editor schedule-links"><summary>Link mappa personalizzato</summary><div>
                     <label>Link Amap<input value={item.mapUrl || ""} placeholder="Automatico se vuoto" onChange={(event) => updateScheduleItem(item.id, { mapUrl: event.target.value })} /></label>
-                    <label>Link condiviso WeChat<input value={item.wechatUrl || ""} placeholder="Incolla il link ricevuto" onChange={(event) => updateScheduleItem(item.id, { wechatUrl: event.target.value })} /></label>
-                    <label>Link condiviso Alipay<input value={item.alipayUrl || ""} placeholder="Incolla il link o Mini Program" onChange={(event) => updateScheduleItem(item.id, { alipayUrl: event.target.value })} /></label>
                   </div></details>
                   <textarea aria-label="Note attività" value={item.notes} placeholder="Biglietti, cosa portare, note pratiche…" onChange={(event) => updateScheduleItem(item.id, { notes: event.target.value })} onBlur={() => recordChange("Note aggiornate", item.name)} />
                   <div className="schedule-meta">
                     <label>Costo per 2 <span className="money-input"><input type="number" min="0" step="0.01" value={item.price} onChange={(event) => updateScheduleItem(item.id, { price: Number(event.target.value) || 0 })} onBlur={(event) => logScheduleField(item, "costo", formatCost(Number(event.target.value) || 0, item.currency))} /><select aria-label={`Valuta ${item.name}`} value={item.currency || "EUR"} onChange={(event) => { updateScheduleItem(item.id, { currency: event.target.value as Currency }); recordChange("Valuta modificata", `${item.name}: ${event.target.value}`); }}><option value="EUR">€</option><option value="CNY">¥</option></select></span></label>
                     <label>Stato <select value={item.bookingStatus} onChange={(event) => { updateScheduleItem(item.id, { bookingStatus: event.target.value as ScheduleItem["bookingStatus"] }); recordChange("Stato modificato", `${item.name}: ${event.target.options[event.target.selectedIndex].text}`); }}><option value="da-prenotare">Da prenotare</option><option value="prenotato">Prenotato</option><option value="non-serve">Nessuna prenotazione</option></select></label>
                     {itemMapLink && <a className="map-link" href={itemMapLink} target="_blank" rel="noreferrer">Apri in Amap ↗</a>}
-                    {safeExternalLink(item.wechatUrl) && <a href={safeExternalLink(item.wechatUrl)} target="_blank" rel="noreferrer">WeChat ↗</a>}
-                    {safeExternalLink(item.alipayUrl) && <a href={safeExternalLink(item.alipayUrl)} target="_blank" rel="noreferrer">Alipay ↗</a>}
                     {item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noreferrer">Fonte ↗</a>}
                     <button className="danger-text" onClick={() => removeScheduleItem(item.id)}>Elimina</button>
                   </div>
@@ -1412,8 +1533,6 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                 {newScheduleItem.kind === "transport" && <><label>Mezzo<input value={newScheduleItem.transportMode} placeholder="Treno, Didi, metro…" onChange={(event) => setNewScheduleItem((current) => ({ ...current, transportMode: event.target.value }))} /></label><label className="wide">Da<input value={newScheduleItem.fromLocation} placeholder="Hotel o punto di partenza" onChange={(event) => setNewScheduleItem((current) => ({ ...current, fromLocation: event.target.value }))} /></label></>}
                 <label className="wide">{newScheduleItem.kind === "transport" ? "A / destinazione" : newScheduleItem.kind === "hotel" ? "Hotel / indirizzo" : "Luogo"}<input value={newScheduleItem.location} placeholder="Nome, indirizzo o stazione (meglio anche in cinese)" onChange={(event) => setNewScheduleItem((current) => ({ ...current, location: event.target.value }))} /></label>
                 <label>Link mappa (opzionale)<input type="url" value={newScheduleItem.mapUrl} placeholder="Link Amap del luogo" onChange={(event) => setNewScheduleItem((current) => ({ ...current, mapUrl: event.target.value }))} /></label>
-                <label>Link WeChat (opzionale)<input value={newScheduleItem.wechatUrl} placeholder="Link condiviso o Mini Program" onChange={(event) => setNewScheduleItem((current) => ({ ...current, wechatUrl: event.target.value }))} /></label>
-                <label>Link Alipay (opzionale)<input value={newScheduleItem.alipayUrl} placeholder="Link condiviso o Mini Program" onChange={(event) => setNewScheduleItem((current) => ({ ...current, alipayUrl: event.target.value }))} /></label>
                 <label>Costo per 2<span className="money-input"><input type="number" min="0" step="0.01" value={newScheduleItem.price} onChange={(event) => setNewScheduleItem((current) => ({ ...current, price: Number(event.target.value) || 0 }))} /><select aria-label="Valuta nuova attività" value={newScheduleItem.currency} onChange={(event) => setNewScheduleItem((current) => ({ ...current, currency: event.target.value as Currency }))}><option value="EUR">€</option><option value="CNY">¥</option></select></span></label>
                 <label>Stato<select value={newScheduleItem.bookingStatus} onChange={(event) => setNewScheduleItem((current) => ({ ...current, bookingStatus: event.target.value as ScheduleItem["bookingStatus"] }))}><option value="da-prenotare">Da prenotare</option><option value="prenotato">Prenotato</option><option value="non-serve">Nessuna prenotazione</option></select></label>
                 <label className="full">Note<textarea value={newScheduleItem.notes} placeholder="Tempi di trasferimento, biglietti, promemoria…" onChange={(event) => setNewScheduleItem((current) => ({ ...current, notes: event.target.value }))} /></label>
@@ -1421,6 +1540,27 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
               {newScheduleItem.kind === "activity" && <div className="category-creator"><span>Non trovi la categoria?</span><input value={newCategory} placeholder="Es. Fotografia" onChange={(event) => setNewCategory(event.target.value)} /><button type="button" onClick={addCustomCategory}>+ Crea categoria</button></div>}
               <div className="add-plan-footer"><button className="primary" type="submit">+ Aggiungi alla giornata</button><small>Dopo l’aggiunta, ogni modifica viene salvata automaticamente.</small></div>
             </form>
+
+            <article className="card day-expenses">
+              <div className="card-head"><div><p className="eyebrow">Fine giornata · chi ha pagato cosa</p><h3>Spese effettive del giorno</h3></div><b>{euro.format(dayExpensesTotal)}</b></div>
+              <div className="expense-list">
+                {dayExpenses.length === 0 && <p className="empty">Nessuna spesa registrata. A fine giornata, segnate qui chi ha pagato cosa: il budget e il bilancio Alberto/Sofia si aggiornano da soli.</p>}
+                {dayExpenses.map((expense) => <div className="expense-row" key={expense.id}>
+                  <span className={`payer-badge ${expense.paidBy}`}>{PAYER_LABELS[expense.paidBy].charAt(0)}</span>
+                  <div><b>{expense.label}</b><small>{EXPENSE_CATEGORIES.find((category) => category.value === expense.category)?.label || "Extra"} · ha pagato {PAYER_LABELS[expense.paidBy]}</small></div>
+                  <strong>{formatCost(expense.amount, expense.currency)}{expense.currency === "CNY" && <small>≈ {euro.format(toEuro(expense.amount, expense.currency))}</small>}</strong>
+                  <button className="danger-text" onClick={() => removeExpense(expense.id)}>Togli</button>
+                </div>)}
+              </div>
+              <form className="add-expense" onSubmit={addExpense}>
+                <input required aria-label="Descrizione spesa" placeholder="Es. Cena, biglietti, taxi…" value={newExpense.label} onChange={(event) => setNewExpense((current) => ({ ...current, label: event.target.value }))} />
+                <input required aria-label="Importo spesa" type="number" min="0.01" step="0.01" placeholder="0" value={newExpense.amount || ""} onChange={(event) => setNewExpense((current) => ({ ...current, amount: Number(event.target.value) || 0 }))} />
+                <select aria-label="Valuta spesa" value={newExpense.currency} onChange={(event) => setNewExpense((current) => ({ ...current, currency: event.target.value as Currency }))}><option value="EUR">€</option><option value="CNY">¥</option></select>
+                <select aria-label="Categoria spesa" value={newExpense.category} onChange={(event) => setNewExpense((current) => ({ ...current, category: event.target.value as ExpenseCategory }))}>{EXPENSE_CATEGORIES.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}</select>
+                <select aria-label="Chi ha pagato" value={newExpense.paidBy} onChange={(event) => setNewExpense((current) => ({ ...current, paidBy: event.target.value as Payer }))}><option value="alberto">Alberto</option><option value="sofia">Sofia</option></select>
+                <button className="primary" type="submit">+ Registra</button>
+              </form>
+            </article>
           </div>
 
         </div>
@@ -1458,18 +1598,59 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
       </section>}
 
       {section === "budget" && <section className="panel-section">
-        <div className="budget-hero"><div><p className="eyebrow">Totale dinamico per due</p><strong>{euro.format(totalBudget)}</strong><span>{euro.format(totalBudget / 2)} a persona</span></div><p>Ogni costo inserito nell’agenda e ogni collegamento incluso entra automaticamente nel totale.</p></div>
-        <div className="budget-grid">
-          <article className="budget-category locked"><span>Voli internazionali</span><b>{euro.format(FLIGHTS_COST)}</b><small>Costo confermato</small></article>
-          <article className="budget-category"><span>Hotel</span><b>{euro.format(hotelCost)}</b><small>{hotelStays.reduce((sum, stay) => sum + hotelNights(stay), 0)} notti · modifica date e prezzi nella sezione Hotel</small></article>
-          <article className="budget-category"><span>Trasporti tra tappe</span><b>{euro.format(transportCost)}</b><small>{normalizedLegs.filter((leg) => leg.included).length} collegamenti inclusi</small></article>
-          <article className="budget-category highlight"><span>Costi in agenda</span><b>{euro.format(activitiesCost)}</b><small>{budgetedActivities.length} blocchi con un costo</small></article>
-          <article className="budget-category"><span>Costi aggiunti</span><b>{euro.format(addedCostsTotal)}</b><small>{costEntries.length} voci libere</small></article>
-          <article className="budget-category editable"><span>Cambio yuan</span><label>1 € = <input type="number" min="0.01" step="0.01" value={cnyPerEuro} onChange={(event) => setCnyPerEuro(Math.max(0.01, Number(event.target.value) || 8))} /> ¥</label><small>Modificabile quando vuoi</small></article>
+        <div className="budget-hero">
+          <div><p className="eyebrow">Budget pianificato · per due</p><strong>{euro.format(totalBudget)}</strong><span>{euro.format(totalBudget / 2)} a persona</span></div>
+          <div className="budget-hero-side">
+            <div><small>Speso finora</small><b>{euro.format(spentTotal)}</b></div>
+            <div><small>Residuo</small><b className={totalBudget - spentTotal >= 0 ? "ok" : "over"}>{euro.format(totalBudget - spentTotal)}</b></div>
+            <div><small>Cambio</small><label className="fx-input">1 € = <input type="number" min="0.01" step="0.01" value={cnyPerEuro} onChange={(event) => setCnyPerEuro(Math.max(0.01, Number(event.target.value) || 8))} /> ¥</label></div>
+          </div>
         </div>
+
+        <article className="card budget-compare">
+          <div className="card-head"><div><p className="eyebrow">Pianificato vs speso</p><h2>Scostamento per categoria</h2></div><span className="subtle">Le spese registrate a fine giornata finiscono qui, divise per categoria</span></div>
+          <div className="compare-table">
+            <div className="compare-row head"><span>Categoria</span><span>Pianificato</span><span>Speso</span><span>Scostamento</span></div>
+            {budgetComparison.map((row) => {
+              const delta = row.spent - row.planned;
+              return <div className="compare-row" key={row.key}>
+                <span className="compare-label"><b>{row.label}</b><small>{row.note}</small></span>
+                <span>{euro.format(row.planned)}</span>
+                <span>{row.spent > 0 ? euro.format(row.spent) : "—"}</span>
+                <span className={`compare-delta ${row.spent === 0 ? "muted" : delta > 0 ? "over" : "ok"}`}>{row.spent === 0 ? "—" : `${delta > 0 ? "+" : "−"} ${euro.format(Math.abs(delta))}`}</span>
+              </div>;
+            })}
+            <div className="compare-row total">
+              <span className="compare-label"><b>Totale viaggio</b></span>
+              <span>{euro.format(totalBudget)}</span>
+              <span>{euro.format(spentTotal)}</span>
+              <span className={`compare-delta ${spentTotal === 0 ? "muted" : spentTotal - totalBudget > 0 ? "over" : "ok"}`}>{spentTotal === 0 ? "—" : `${spentTotal - totalBudget > 0 ? "+" : "−"} ${euro.format(Math.abs(spentTotal - totalBudget))}`}</span>
+            </div>
+          </div>
+        </article>
+
+        <article className="card split-card">
+          <div className="card-head"><div><p className="eyebrow">Splitwise interno · tutto diviso a metà</p><h2>Bilancio Alberto & Sofia</h2></div><b>{euro.format(spentTotal)}</b></div>
+          <div className="split-totals">
+            <div className="split-person alberto"><span className="payer-badge alberto">A</span><div><b>Alberto</b><small>ha anticipato</small></div><strong>{euro.format(spentByPayer.alberto)}</strong></div>
+            <div className={`split-balance ${splitBalance === 0 ? "even" : ""}`}>
+              {splitBalance === 0 ? <b>Siete pari</b> : splitBalance > 0 ? <><small>Sofia deve ad Alberto</small><b>{euro.format(splitBalance)}</b></> : <><small>Alberto deve a Sofia</small><b>{euro.format(-splitBalance)}</b></>}
+            </div>
+            <div className="split-person sofia"><span className="payer-badge sofia">S</span><div><b>Sofia</b><small>ha anticipato</small></div><strong>{euro.format(spentByPayer.sofia)}</strong></div>
+          </div>
+          {expenses.length > 0 && <div className="expense-register">
+            {[...expenses].sort((a, b) => `${b.date}${b.id}`.localeCompare(`${a.date}${a.id}`)).map((expense) => <div className="expense-row" key={expense.id}>
+              <span className={`payer-badge ${expense.paidBy}`}>{PAYER_LABELS[expense.paidBy].charAt(0)}</span>
+              <div><b>{expense.label}</b><small>{shortDate.format(new Date(`${expense.date}T12:00:00`))} · {EXPENSE_CATEGORIES.find((category) => category.value === expense.category)?.label || "Extra"}</small></div>
+              <strong>{formatCost(expense.amount, expense.currency)}</strong>
+              <button className="danger-text" onClick={() => removeExpense(expense.id)}>Togli</button>
+            </div>)}
+          </div>}
+        </article>
+
         <div className="budget-panels">
           <article className="card cost-manager">
-            <div className="card-head"><div><p className="eyebrow">Euro o yuan</p><h2>Aggiungi e togli costi</h2></div><b>{euro.format(addedCostsTotal)}</b></div>
+            <div className="card-head"><div><p className="eyebrow">Pianificazione · cibo, extra e stime</p><h2>Voci di budget pianificate</h2></div><b>{euro.format(addedCostsTotal)}</b></div>
             <div className="cost-list">
               {costEntries.map((entry) => <div className="cost-row" key={entry.id}>
                 <input aria-label="Descrizione costo" value={entry.label} onChange={(event) => updateCostEntry(entry.id, { label: event.target.value })} onBlur={(event) => recordChange("Costo modificato", `Descrizione: ${event.target.value}`)} />

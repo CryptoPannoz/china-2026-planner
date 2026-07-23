@@ -54,10 +54,36 @@ test("gestisce costi aggiungibili e rimovibili in euro e yuan", async () => {
   const planner = await source("app/ChinaPlanner.tsx");
 
   assert.match(planner, /type Currency = "EUR" \| "CNY"/);
-  assert.match(planner, /Aggiungi e togli costi/);
+  assert.match(planner, /Voci di budget pianificate/);
   assert.match(planner, /removeCostEntry/);
   assert.match(planner, /cnyPerEuro/);
   assert.match(planner, /CNY ¥/);
+});
+
+test("registra spese giornaliere con bilancio Alberto/Sofia", async () => {
+  const planner = await source("app/ChinaPlanner.tsx");
+
+  assert.match(planner, /type Payer = "alberto" \| "sofia"/);
+  assert.match(planner, /type Expense = \{/);
+  assert.match(planner, /addExpense/);
+  assert.match(planner, /removeExpense/);
+  assert.match(planner, /Spese effettive del giorno/);
+  assert.match(planner, /splitBalance/);
+  assert.match(planner, /Bilancio Alberto & Sofia/);
+  assert.match(planner, /Scostamento per categoria/);
+  assert.match(planner, /budgetComparison/);
+});
+
+test("mostra agenda per città e attività clou nell'itinerario", async () => {
+  const planner = await source("app/ChinaPlanner.tsx");
+
+  assert.match(planner, /Attività clou/);
+  assert.match(planner, /addClouActivity/);
+  assert.match(planner, /removeClouActivity/);
+  assert.match(planner, /webSearchUrl/);
+  assert.match(planner, /selectedStopDays/);
+  assert.match(planner, /trip-strip/);
+  assert.match(planner, /openDayInAgenda/);
 });
 
 test("struttura agenda, mappe e registro condiviso", async () => {
@@ -78,8 +104,8 @@ test("struttura agenda, mappe e registro condiviso", async () => {
   assert.match(planner, /Data check-in/);
   assert.match(planner, /Data check-out/);
   assert.match(planner, /selectedDayHotels/);
-  assert.match(planner, /Link condiviso WeChat/);
-  assert.match(planner, /Link condiviso Alipay/);
+  assert.doesNotMatch(planner, /Link condiviso WeChat/);
+  assert.doesNotMatch(planner, /Link condiviso Alipay/);
   assert.match(planner, /amapStopUrl/);
   assert.match(planner, /Panoramica itinerario · OpenStreetMap/);
   assert.match(planner, /La rotta completa, tappa per tappa/);
