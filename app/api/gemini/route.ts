@@ -70,6 +70,8 @@ export async function POST(request: NextRequest) {
   const action = safeText(body.action, 30);
   const query = safeText(body.query, 800);
   const city = safeText(body.city, 120);
+  const date = safeText(body.date, 20);
+  const existing = safeText(body.existing, 1800);
   const from = safeText(body.from, 120);
   const to = safeText(body.to, 120);
   const latitude = Number(body.latitude);
@@ -83,6 +85,9 @@ export async function POST(request: NextRequest) {
     prompt = `Sei un travel researcher per due viaggiatori italiani in Cina nel novembre 2026. Cerca informazioni attuali per ${city}. Domanda: ${query || "Cosa vale la pena fare?"}. Rispondi SOLO con JSON valido nella forma {"answer":"sintesi breve in italiano","suggestions":[{"name":"nome attività","description":"perché farla e come prenotare","priceEstimate":0,"currency":"EUR","bookingNote":"nota pratica"}],"caveat":"prezzi da verificare"}. priceEstimate è il costo stimato totale per 2 persone in euro, numero senza simboli. Massimo 5 suggerimenti.`;
     const mapTool: Record<string, unknown> = { googleMaps: {} };
     tools = [mapTool];
+  } else if (action === "day-plan") {
+    prompt = `Sei un travel planner esperto di viaggi indipendenti in Cina. Costruisci un programma REALISTICO per due viaggiatori italiani a ${city} il ${date || "giorno indicato"}. Preferenze: ${query || "ritmo equilibrato"}. Blocchi già presenti, da rispettare e non duplicare: ${existing || "nessuno"}. Considera orari di apertura plausibili, tempi di spostamento, pasti, pause, vicinanza geografica e meteo stagionale. Cerca informazioni attuali su Google Maps. Rispondi SOLO con JSON valido nella forma {"answer":"breve logica della giornata in italiano","suggestions":[{"startTime":"09:00","endTime":"11:30","name":"nome del blocco","category":"visita","location":"luogo o quartiere","description":"cosa fare e perché questo orario","priceEstimate":0,"currency":"EUR","bookingNote":"cosa e quando prenotare, oppure stringa vuota"}],"caveat":"orari e prezzi da verificare"}. category deve essere una tra visita, trasporto, cibo, tempo-libero, hotel. priceEstimate è il costo totale per due persone in euro. Proponi da 3 a 6 blocchi non sovrapposti e non ripetere quelli già presenti.`;
+    tools = [{ googleMaps: {} }];
   } else if (action === "transport") {
     prompt = `Cerca sul web il collegamento più pratico per due persone tra ${from} e ${to} nel novembre 2026. Domanda: ${query || "Confronta treno, volo e transfer"}. Rispondi SOLO con JSON valido nella forma {"answer":"sintesi breve in italiano","suggestions":[{"name":"mezzo consigliato","description":"stazioni o aeroporti, durata e cambi","priceEstimate":0,"currency":"EUR","bookingNote":"dove e quando prenotare"}],"caveat":"orari e prezzi da verificare"}. priceEstimate è il costo stimato totale per 2 persone in euro. Massimo 4 opzioni.`;
     tools = [{ googleSearch: {} }];
@@ -99,7 +104,7 @@ export async function POST(request: NextRequest) {
   }
 
   let toolConfig: Record<string, unknown> | undefined;
-  if (action === "activities" && Number.isFinite(latitude) && Number.isFinite(longitude)) {
+  if ((action === "activities" || action === "day-plan") && Number.isFinite(latitude) && Number.isFinite(longitude)) {
     toolConfig = { retrievalConfig: { latLng: { latitude, longitude } } };
   }
 

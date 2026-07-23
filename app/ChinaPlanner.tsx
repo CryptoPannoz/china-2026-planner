@@ -13,6 +13,22 @@ type Activity = {
   sourceUrl?: string;
 };
 
+type ScheduleItem = {
+  id: string;
+  date: string;
+  stopId: string;
+  startTime: string;
+  endTime: string;
+  name: string;
+  category: "visita" | "trasporto" | "cibo" | "tempo-libero" | "hotel";
+  location: string;
+  notes: string;
+  price: number;
+  bookingStatus: "da-prenotare" | "prenotato" | "non-serve";
+  sourceUrl?: string;
+  sourceActivityId?: string;
+};
+
 type Stop = {
   id: string;
   name: string;
@@ -40,6 +56,10 @@ type AiSuggestion = {
   priceEstimate: number;
   currency?: string;
   bookingNote?: string;
+  startTime?: string;
+  endTime?: string;
+  category?: ScheduleItem["category"];
+  location?: string;
 };
 
 type AiSource = { title: string; url: string };
@@ -126,6 +146,41 @@ const initialLegs: Leg[] = [
   { id: "fenghuang-wuzhen", fromId: "fenghuang", toId: "wuzhen", mode: "🚄 Treni via Changsha", duration: "7–9h", cost: 130, included: true, note: "La tratta più delicata" },
   { id: "wuzhen-suzhou", fromId: "wuzhen", toId: "suzhou", mode: "🚕 Didi / transfer", duration: "1h30–2h", cost: 55, included: true, note: "Alternativa: bus diretto" },
   { id: "suzhou-shanghai", fromId: "suzhou", toId: "shanghai", mode: "🚄 Alta velocità", duration: "25–40 min", cost: 20, included: true, note: "Preferire stazioni centrali" },
+];
+
+const initialSchedule: ScheduleItem[] = [
+  { id: "d01-arrival", date: "2026-11-17", stopId: "beijing", startTime: "12:25", endTime: "15:30", name: "Arrivo a Pechino e transfer", category: "trasporto", location: "PEK → hotel", notes: "Ritiro bagagli, Alipay pronto e check-in. Non fissare attività impegnative.", price: 0, bookingStatus: "prenotato" },
+  { id: "d01-evening", date: "2026-11-17", stopId: "beijing", startTime: "17:30", endTime: "20:00", name: "Passeggiata nei hutong e cena", category: "cibo", location: "Shichahai / Gulou", notes: "Serata leggera per assorbire il fuso orario.", price: 35, bookingStatus: "non-serve" },
+  { id: "d02-forbidden", date: "2026-11-18", stopId: "beijing", startTime: "08:30", endTime: "13:00", name: "Tian’anmen e Città Proibita", category: "visita", location: "Ingresso Meridian Gate", notes: "Passaporti con sé. Prenotare appena apre la finestra ufficiale.", price: 24, bookingStatus: "da-prenotare", sourceActivityId: "forbidden-city" },
+  { id: "d02-jingshan", date: "2026-11-18", stopId: "beijing", startTime: "14:00", endTime: "17:00", name: "Jingshan e Beihai", category: "visita", location: "Jingshan Park", notes: "Salita al belvedere prima del tramonto.", price: 5, bookingStatus: "non-serve" },
+  { id: "d03-wall", date: "2026-11-19", stopId: "beijing", startTime: "07:30", endTime: "16:30", name: "Grande Muraglia di Mutianyu", category: "visita", location: "Mutianyu", notes: "Partenza presto; verificare transfer privato o bus turistico.", price: 110, bookingStatus: "da-prenotare", sourceActivityId: "great-wall" },
+  { id: "d03-duck", date: "2026-11-19", stopId: "beijing", startTime: "19:00", endTime: "21:00", name: "Cena con anatra alla pechinese", category: "cibo", location: "Dongcheng", notes: "Prenotare un ristorante vicino all’hotel.", price: 55, bookingStatus: "da-prenotare" },
+  { id: "d04-train", date: "2026-11-20", stopId: "xian", startTime: "08:00", endTime: "14:30", name: "Treno Pechino → Xi’an", category: "trasporto", location: "Beijing West → Xi’an North", notes: "Arrivare in stazione almeno 60 minuti prima.", price: 0, bookingStatus: "da-prenotare" },
+  { id: "d04-quarter", date: "2026-11-20", stopId: "xian", startTime: "17:30", endTime: "20:30", name: "Quartiere musulmano e Drum Tower", category: "cibo", location: "Huimin Jie", notes: "Street food e prima passeggiata sulle mura.", price: 30, bookingStatus: "non-serve" },
+  { id: "d05-terracotta", date: "2026-11-21", stopId: "xian", startTime: "08:00", endTime: "14:00", name: "Esercito di Terracotta", category: "visita", location: "Emperor Qinshihuang’s Mausoleum", notes: "Transfer A/R; guida opzionale.", price: 60, bookingStatus: "da-prenotare", sourceActivityId: "terracotta" },
+  { id: "d05-wall", date: "2026-11-21", stopId: "xian", startTime: "16:00", endTime: "19:00", name: "Mura di Xi’an al tramonto", category: "visita", location: "South Gate", notes: "Valutare noleggio bici in base al meteo.", price: 18, bookingStatus: "non-serve" },
+  { id: "d06-train", date: "2026-11-22", stopId: "chengdu", startTime: "09:00", endTime: "14:30", name: "Treno Xi’an → Chengdu", category: "trasporto", location: "Xi’an North → Chengdu East", notes: "Check-in hotel e pomeriggio tranquillo.", price: 0, bookingStatus: "da-prenotare" },
+  { id: "d06-jinli", date: "2026-11-22", stopId: "chengdu", startTime: "17:00", endTime: "20:30", name: "Jinli Street e cena Sichuan", category: "cibo", location: "Jinli Ancient Street", notes: "Chiedere livello di piccantezza medio.", price: 40, bookingStatus: "non-serve" },
+  { id: "d07-pandas", date: "2026-11-23", stopId: "chengdu", startTime: "07:00", endTime: "12:30", name: "Chengdu Panda Base", category: "visita", location: "Research Base of Giant Panda Breeding", notes: "Essere all’ingresso all’apertura: i panda sono più attivi al mattino.", price: 30, bookingStatus: "da-prenotare", sourceActivityId: "pandas" },
+  { id: "d07-tea", date: "2026-11-23", stopId: "chengdu", startTime: "15:00", endTime: "18:00", name: "People’s Park e casa da tè", category: "tempo-libero", location: "Heming Teahouse", notes: "Pomeriggio lento; eventuale opera Sichuan la sera.", price: 20, bookingStatus: "non-serve" },
+  { id: "d08-flight", date: "2026-11-24", stopId: "kunming", startTime: "09:00", endTime: "13:00", name: "Volo Chengdu → Kunming", category: "trasporto", location: "CTU/TFU → KMG", notes: "Controllare aeroporto di partenza prima di prenotare.", price: 0, bookingStatus: "da-prenotare" },
+  { id: "d08-lake", date: "2026-11-24", stopId: "kunming", startTime: "16:00", endTime: "19:00", name: "Green Lake e Yuantong Street", category: "tempo-libero", location: "Cuihu Park", notes: "Passeggiata di orientamento e cena Yunnan.", price: 25, bookingStatus: "non-serve" },
+  { id: "d09-stone", date: "2026-11-25", stopId: "kunming", startTime: "08:00", endTime: "17:00", name: "Foresta di Pietra di Shilin", category: "visita", location: "Shilin Scenic Area", notes: "Escursione intera giornata; portare strato antivento.", price: 80, bookingStatus: "da-prenotare", sourceActivityId: "stone-forest" },
+  { id: "d10-dianchi", date: "2026-11-26", stopId: "kunming", startTime: "09:30", endTime: "13:00", name: "Dianchi Lake e Western Hills", category: "visita", location: "Haigeng Park", notes: "Tenere il pomeriggio libero per lavanderia e preparazione treno.", price: 25, bookingStatus: "non-serve" },
+  { id: "d10-buffer", date: "2026-11-26", stopId: "kunming", startTime: "15:00", endTime: "18:00", name: "Tempo cuscinetto e organizzazione", category: "tempo-libero", location: "Hotel / centro", notes: "Controllare biglietti e meteo per Zhangjiajie.", price: 0, bookingStatus: "non-serve" },
+  { id: "d11-transfer", date: "2026-11-27", stopId: "zhangjiajie", startTime: "07:30", endTime: "16:30", name: "Kunming → Zhangjiajie", category: "trasporto", location: "Treno con cambio / volo", notes: "Tratta critica: bloccare l’opzione definitiva appena escono gli orari.", price: 0, bookingStatus: "da-prenotare" },
+  { id: "d11-checkin", date: "2026-11-27", stopId: "zhangjiajie", startTime: "18:00", endTime: "20:00", name: "Check-in a Wulingyuan e cena", category: "hotel", location: "Wulingyuan", notes: "Acquistare snack e acqua per il parco.", price: 25, bookingStatus: "non-serve" },
+  { id: "d12-park", date: "2026-11-28", stopId: "zhangjiajie", startTime: "07:30", endTime: "17:30", name: "Zhangjiajie National Forest Park", category: "visita", location: "Wulingyuan Entrance", notes: "Itinerario Yuanjiajie + Tianzi Mountain; adattare a meteo e code.", price: 90, bookingStatus: "da-prenotare", sourceActivityId: "forest-park" },
+  { id: "d13-fenghuang", date: "2026-11-29", stopId: "fenghuang", startTime: "09:00", endTime: "12:00", name: "Trasferimento a Fenghuang", category: "trasporto", location: "Zhangjiajie → Fenghuanggucheng", notes: "Treno veloce e Didi fino all’alloggio.", price: 0, bookingStatus: "da-prenotare" },
+  { id: "d13-river", date: "2026-11-29", stopId: "fenghuang", startTime: "15:00", endTime: "20:30", name: "Città antica e Tuojiang illuminato", category: "visita", location: "Fenghuang Ancient Town", notes: "Barca prima del tramonto; passeggiata serale.", price: 15, bookingStatus: "non-serve", sourceActivityId: "tuojiang" },
+  { id: "d14-wuzhen", date: "2026-11-30", stopId: "wuzhen", startTime: "07:00", endTime: "16:00", name: "Fenghuang → Wuzhen", category: "trasporto", location: "Via Changsha / Tongxiang", notes: "Seconda tratta critica; lasciare margine tra i cambi.", price: 0, bookingStatus: "da-prenotare" },
+  { id: "d14-xizha", date: "2026-11-30", stopId: "wuzhen", startTime: "17:30", endTime: "20:30", name: "Xizha di sera", category: "visita", location: "Xizha Scenic Area", notes: "Dormire dentro o vicino all’area scenica.", price: 40, bookingStatus: "da-prenotare", sourceActivityId: "xizha" },
+  { id: "d15-suzhou", date: "2026-12-01", stopId: "suzhou", startTime: "09:00", endTime: "11:00", name: "Transfer Wuzhen → Suzhou", category: "trasporto", location: "Hotel → Suzhou", notes: "Didi o transfer prenotato.", price: 0, bookingStatus: "da-prenotare" },
+  { id: "d15-gardens", date: "2026-12-01", stopId: "suzhou", startTime: "12:00", endTime: "17:00", name: "Giardini classici e Pingjiang Road", category: "visita", location: "Humble Administrator’s Garden", notes: "Giardino prima, canali e cena dopo.", price: 20, bookingStatus: "da-prenotare", sourceActivityId: "humble-garden" },
+  { id: "d16-shanghai", date: "2026-12-02", stopId: "shanghai", startTime: "09:00", endTime: "11:30", name: "Treno Suzhou → Shanghai", category: "trasporto", location: "Suzhou → Shanghai", notes: "Preferire Hongqiao se comodo per l’hotel.", price: 0, bookingStatus: "da-prenotare" },
+  { id: "d16-bund", date: "2026-12-02", stopId: "shanghai", startTime: "14:00", endTime: "20:00", name: "Concessione Francese e Bund", category: "visita", location: "Xintiandi → Bund", notes: "Arrivare sul Bund poco prima dell’accensione delle luci.", price: 20, bookingStatus: "non-serve" },
+  { id: "d17-shanghai", date: "2026-12-03", stopId: "shanghai", startTime: "09:30", endTime: "13:00", name: "Yu Garden e Old City", category: "visita", location: "Yuyuan", notes: "Ultimi acquisti senza allontanarsi troppo.", price: 20, bookingStatus: "da-prenotare" },
+  { id: "d17-tower", date: "2026-12-03", stopId: "shanghai", startTime: "16:00", endTime: "19:00", name: "Shanghai Tower e ultima cena", category: "visita", location: "Lujiazui", notes: "Scegliere fascia tramonto; preparare i bagagli prima di uscire.", price: 45, bookingStatus: "da-prenotare", sourceActivityId: "tower" },
 ];
 
 const defaultChecklist = [
@@ -317,9 +372,11 @@ async function photoStore(mode: "get" | "put" | "delete", value?: PhotoItem | st
 }
 
 export function ChinaPlanner() {
-  const [section, setSection] = useState("itinerary");
+  const [section, setSection] = useState("calendar");
   const [stops, setStops] = useState<Stop[]>(initialStops);
   const [legs, setLegs] = useState<Leg[]>(initialLegs);
+  const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>(initialSchedule);
+  const [selectedDate, setSelectedDate] = useState("2026-11-17");
   const [selectedStopId, setSelectedStopId] = useState("beijing");
   const [newStopName, setNewStopName] = useState("");
   const [aiQuery, setAiQuery] = useState("Cerca esperienze autentiche e indicami prezzi e modalità di prenotazione");
@@ -330,6 +387,20 @@ export function ChinaPlanner() {
   const [aiError, setAiError] = useState("");
   const [transportSearchId, setTransportSearchId] = useState("");
   const [transportSuggestions, setTransportSuggestions] = useState<AiSuggestion[]>([]);
+  const [dayAiQuery, setDayAiQuery] = useState("Ritmo equilibrato, luoghi iconici e autentici, pause realistiche e spostamenti efficienti");
+  const [dayAiSuggestions, setDayAiSuggestions] = useState<AiSuggestion[]>([]);
+  const [dayAiAnswer, setDayAiAnswer] = useState("");
+  const [dayAiLoading, setDayAiLoading] = useState(false);
+  const [newScheduleItem, setNewScheduleItem] = useState({
+    startTime: "09:00",
+    endTime: "11:00",
+    name: "",
+    category: "visita" as ScheduleItem["category"],
+    location: "",
+    notes: "",
+    price: 0,
+    bookingStatus: "da-prenotare" as ScheduleItem["bookingStatus"],
+  });
   const [checklist, setChecklist] = useState<boolean[]>(defaultChecklist.map(() => false));
   const [notes, setNotes] = useState("");
   const [foodBudget, setFoodBudget] = useState(900);
@@ -345,6 +416,7 @@ export function ChinaPlanner() {
         const saved = JSON.parse(localStorage.getItem("china-planner-v2") || "null") as Record<string, unknown> | null;
         if (saved?.stops) setStops(saved.stops as Stop[]);
         if (saved?.legs) setLegs(saved.legs as Leg[]);
+        if (saved?.scheduleItems) setScheduleItems(saved.scheduleItems as ScheduleItem[]);
         if (saved?.checklist) setChecklist(saved.checklist as boolean[]);
         if (typeof saved?.notes === "string") setNotes(saved.notes);
         if (typeof saved?.foodBudget === "number") setFoodBudget(saved.foodBudget);
@@ -361,8 +433,8 @@ export function ChinaPlanner() {
 
   useEffect(() => {
     if (!hydrated) return;
-    localStorage.setItem("china-planner-v2", JSON.stringify({ stops, legs, checklist, notes, foodBudget, localBudget, otherBudget }));
-  }, [stops, legs, checklist, notes, foodBudget, localBudget, otherBudget, hydrated]);
+    localStorage.setItem("china-planner-v2", JSON.stringify({ stops, legs, scheduleItems, checklist, notes, foodBudget, localBudget, otherBudget }));
+  }, [stops, legs, scheduleItems, checklist, notes, foodBudget, localBudget, otherBudget, hydrated]);
 
   const timeline = useMemo(() => {
     return stops.map((stop, index) => {
@@ -392,29 +464,47 @@ export function ChinaPlanner() {
   const selectedStop = stops.find((stop) => stop.id === selectedStopId) ?? stops[0];
   const usedNights = stops.reduce((sum, stop) => sum + stop.nights, 0);
   const remainingNights = TRIP_NIGHTS - usedNights;
-  const selectedActivities = stops.flatMap((stop) => stop.activities.filter((activity) => activity.selected).map((activity) => ({ ...activity, city: stop.name })));
-  const activitiesCost = selectedActivities.reduce((sum, item) => sum + item.price, 0);
+  const plannedActivities = scheduleItems.map((item) => ({ ...item, city: stops.find((stop) => stop.id === item.stopId)?.name || "Tappa" }));
+  const budgetedActivities = plannedActivities.filter((item) => item.category === "visita" || item.category === "tempo-libero");
+  const activitiesCost = budgetedActivities.reduce((sum, item) => sum + item.price, 0);
   const hotelCost = stops.reduce((sum, stop) => sum + stop.nights * stop.hotelNightly, 0);
   const transportCost = normalizedLegs.filter((leg) => leg.included).reduce((sum, leg) => sum + leg.cost, 0);
   const totalBudget = FLIGHTS_COST + hotelCost + transportCost + activitiesCost + foodBudget + localBudget + otherBudget;
 
   const calendarDays = useMemo(() => {
-    const entries: Array<{ date: Date; city: string; type: string; detail: string }> = [];
+    const entries: Array<{ date: Date; dateKey: string; stopId: string; city: string; type: string; detail: string }> = [];
     timeline.forEach((item, stopIndex) => {
       for (let night = 0; night < item.stop.nights; night++) {
         const date = addDays(item.arrival, night);
         const leg = stopIndex > 0 ? normalizedLegs[stopIndex - 1] : null;
-        const selected = item.stop.activities.filter((activity) => activity.selected);
         entries.push({
           date,
+          dateKey: dateKey(date),
+          stopId: item.stop.id,
           city: item.stop.name,
           type: night === 0 && stopIndex > 0 ? "travel" : "stay",
-          detail: night === 0 && leg?.included ? `${leg.mode} · ${leg.duration}` : selected[night % Math.max(1, selected.length)]?.name || "Giornata da pianificare",
+          detail: night === 0 && leg?.included ? `${leg.mode} · ${leg.duration}` : "Giornata in città",
         });
       }
     });
     return entries;
   }, [timeline, normalizedLegs]);
+
+  const selectedDay = calendarDays.find((entry) => entry.dateKey === selectedDate) ?? calendarDays[0];
+  const selectedDayItems = scheduleItems
+    .filter((item) => item.date === selectedDay?.dateKey)
+    .sort((a, b) => a.startTime.localeCompare(b.startTime));
+  const conflictingIds = new Set<string>();
+  selectedDayItems.forEach((item, index) => {
+    const previous = selectedDayItems[index - 1];
+    if (previous && item.startTime < previous.endTime) {
+      conflictingIds.add(previous.id);
+      conflictingIds.add(item.id);
+    }
+  });
+  const plannedDayCount = calendarDays.filter((day) => scheduleItems.some((item) => item.date === day.dateKey)).length;
+  const dayCost = selectedDayItems.reduce((sum, item) => sum + item.price, 0);
+  const bookingCount = scheduleItems.filter((item) => item.bookingStatus === "da-prenotare").length;
 
   function updateStop(id: string, patch: Partial<Stop>) {
     setStops((current) => current.map((stop) => (stop.id === id ? { ...stop, ...patch } : stop)));
@@ -455,12 +545,123 @@ export function ChinaPlanner() {
     });
   }
 
-  function toggleActivity(stopId: string, activityId: string) {
-    setStops((current) => current.map((stop) => stop.id !== stopId ? stop : { ...stop, activities: stop.activities.map((activity) => activity.id === activityId ? { ...activity, selected: !activity.selected } : activity) }));
-  }
-
   function updateActivityPrice(stopId: string, activityId: string, price: number) {
     setStops((current) => current.map((stop) => stop.id !== stopId ? stop : { ...stop, activities: stop.activities.map((activity) => activity.id === activityId ? { ...activity, price } : activity) }));
+  }
+
+  function addScheduleItem(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedDay || !newScheduleItem.name.trim()) return;
+    setScheduleItems((current) => [...current, {
+      id: uid("plan"),
+      date: selectedDay.dateKey,
+      stopId: selectedDay.stopId,
+      ...newScheduleItem,
+      name: newScheduleItem.name.trim(),
+      location: newScheduleItem.location.trim(),
+      notes: newScheduleItem.notes.trim(),
+      price: Number(newScheduleItem.price) || 0,
+    }]);
+    setNewScheduleItem((current) => ({ ...current, name: "", location: "", notes: "", price: 0 }));
+  }
+
+  function updateScheduleItem(id: string, patch: Partial<ScheduleItem>) {
+    setScheduleItems((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
+  }
+
+  function removeScheduleItem(id: string) {
+    setScheduleItems((current) => current.filter((item) => item.id !== id));
+  }
+
+  function scheduleActivity(stop: Stop, activity: Activity) {
+    const candidateDays = calendarDays.filter((day) => day.stopId === stop.id);
+    if (candidateDays.length === 0) return;
+    const targetDay = [...candidateDays].sort((a, b) => {
+      const aCount = scheduleItems.filter((item) => item.date === a.dateKey).length;
+      const bCount = scheduleItems.filter((item) => item.date === b.dateKey).length;
+      return aCount - bCount;
+    })[0];
+    const count = scheduleItems.filter((item) => item.date === targetDay.dateKey).length;
+    const slots = [["09:00", "12:00"], ["14:00", "17:00"], ["18:00", "20:00"]];
+    const [startTime, endTime] = slots[Math.min(count, slots.length - 1)];
+    setScheduleItems((current) => [...current, {
+      id: uid("plan"),
+      date: targetDay.dateKey,
+      stopId: stop.id,
+      startTime,
+      endTime,
+      name: activity.name,
+      category: "visita",
+      location: stop.name,
+      notes: activity.description,
+      price: activity.price,
+      bookingStatus: "da-prenotare",
+      sourceUrl: activity.sourceUrl,
+      sourceActivityId: activity.id,
+    }]);
+    setStops((current) => current.map((item) => item.id !== stop.id ? item : {
+      ...item,
+      activities: item.activities.map((entry) => entry.id === activity.id ? { ...entry, selected: true } : entry),
+    }));
+    setSelectedDate(targetDay.dateKey);
+    setSection("calendar");
+  }
+
+  async function runDayPlan() {
+    if (!selectedDay) return;
+    setDayAiLoading(true);
+    setDayAiSuggestions([]);
+    setDayAiAnswer("");
+    setAiError("");
+    try {
+      const response = await fetch("/api/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "day-plan",
+          city: selectedDay.city,
+          date: selectedDay.dateKey,
+          query: dayAiQuery,
+          existing: selectedDayItems.map((item) => `${item.startTime}-${item.endTime} ${item.name}`).join("; "),
+          latitude: stops.find((stop) => stop.id === selectedDay.stopId)?.lat,
+          longitude: stops.find((stop) => stop.id === selectedDay.stopId)?.lng,
+        }),
+      });
+      const payload = await response.json() as { error?: string; result?: { answer?: string; suggestions?: AiSuggestion[] }; sources?: AiSource[] };
+      if (!response.ok) throw new Error(payload.error || "Pianificazione non riuscita");
+      setDayAiAnswer(payload.result?.answer || "Proposta pronta.");
+      setDayAiSuggestions(payload.result?.suggestions || []);
+      setAiSources(payload.sources || []);
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "Pianificazione non riuscita");
+    } finally {
+      setDayAiLoading(false);
+    }
+  }
+
+  function addDaySuggestion(suggestion: AiSuggestion) {
+    if (!selectedDay) return;
+    const allowedCategories: ScheduleItem["category"][] = ["visita", "trasporto", "cibo", "tempo-libero", "hotel"];
+    const category = allowedCategories.includes(suggestion.category as ScheduleItem["category"]) ? suggestion.category as ScheduleItem["category"] : "visita";
+    setScheduleItems((current) => [...current, {
+      id: uid("plan"),
+      date: selectedDay.dateKey,
+      stopId: selectedDay.stopId,
+      startTime: /^\d{2}:\d{2}$/.test(suggestion.startTime || "") ? suggestion.startTime as string : "09:00",
+      endTime: /^\d{2}:\d{2}$/.test(suggestion.endTime || "") ? suggestion.endTime as string : "11:00",
+      name: suggestion.name,
+      category,
+      location: suggestion.location || selectedDay.city,
+      notes: [suggestion.description, suggestion.bookingNote].filter(Boolean).join(" · "),
+      price: Number(suggestion.priceEstimate) || 0,
+      bookingStatus: suggestion.bookingNote ? "da-prenotare" : "non-serve",
+      sourceUrl: aiSources[0]?.url,
+    }]);
+  }
+
+  function addEntireAiDay() {
+    dayAiSuggestions.forEach(addDaySuggestion);
+    setDayAiSuggestions([]);
   }
 
   function addSuggestion(suggestion: AiSuggestion) {
@@ -473,6 +674,7 @@ export function ChinaPlanner() {
       sourceUrl: aiSources[0]?.url,
     };
     updateStop(selectedStop.id, { activities: [...selectedStop.activities, activity] });
+    scheduleActivity(selectedStop, activity);
   }
 
   async function runActivitySearch() {
@@ -568,10 +770,10 @@ export function ChinaPlanner() {
 
   const navItems = [
     ["itinerary", "Itinerario"],
-    ["calendar", "Calendario"],
+    ["calendar", "Agenda giorno per giorno"],
     ["transport", "Trasporti"],
     ["budget", "Budget"],
-    ["planner", "Planner & foto"],
+    ["planner", "Checklist & foto"],
   ];
 
   return (
@@ -579,13 +781,13 @@ export function ChinaPlanner() {
       <header className="hero">
         <div>
           <p className="eyebrow">Alberto & Sofia · Cina 2026</p>
-          <h1>Un viaggio che<br />si costruisce da sé.</h1>
-          <p className="lead">Tappe, trasporti, attività e budget sono finalmente collegati. Ogni scelta aggiorna tutto il viaggio.</p>
+          <h1>Ogni giorno.<br />Ogni ora. Tutto qui.</h1>
+          <p className="lead">Un’agenda reale per costruire il viaggio: attività, tempi, spostamenti, prenotazioni e costi restano collegati.</p>
         </div>
         <div className="anchor-card">
-          <span>Finestra confermata</span>
-          <strong>17 nov → 4 dic</strong>
-          <small>17 notti in Cina</small>
+          <span>Piano operativo</span>
+          <strong>{plannedDayCount} / {calendarDays.length} giorni</strong>
+          <small>{scheduleItems.length} blocchi orari · {bookingCount} da prenotare</small>
         </div>
       </header>
 
@@ -638,25 +840,25 @@ export function ChinaPlanner() {
           <aside className="card city-workspace">
             <div className="card-head sticky"><div><p className="eyebrow">City box</p><h2>{selectedStop.name}</h2></div><span className="city-dates">{shortDate.format(timeline.find((item) => item.stop.id === selectedStop.id)?.arrival || ARRIVAL_DATE)}</span></div>
             <div className="city-body">
-              <div className="mini-budget"><span>Selezionate</span><b>{euro.format(selectedStop.activities.filter((item) => item.selected).reduce((sum, item) => sum + item.price, 0))}</b><small>già riflesse nel budget</small></div>
+              <div className="mini-budget"><span>Già in agenda</span><b>{scheduleItems.filter((item) => item.stopId === selectedStop.id).length}</b><small>{euro.format(scheduleItems.filter((item) => item.stopId === selectedStop.id).reduce((sum, item) => sum + item.price, 0))} nel budget</small></div>
               <label className="hotel-field">Hotel per notte <span><input type="number" min="0" value={selectedStop.hotelNightly} onChange={(event) => updateStop(selectedStop.id, { hotelNightly: Number(event.target.value) || 0 })} /> €</span></label>
-              <h3>Cose da fare</h3>
+              <h3>Idee da mettere in agenda</h3>
               <div className="activity-list">
-                {selectedStop.activities.length === 0 && <p className="empty">Nessuna attività: cercala con Gemini oppure aggiungi una nuova tappa alla ricerca.</p>}
-                {selectedStop.activities.map((activity) => <div className={`activity-row ${activity.selected ? "selected" : ""}`} key={activity.id}>
-                  <button className="check" onClick={() => toggleActivity(selectedStop.id, activity.id)}>{activity.selected ? "✓" : "+"}</button>
+                {selectedStop.activities.length === 0 && <p className="empty">Nessuna idea salvata: chiedi a Gemini di trovarne di nuove.</p>}
+                {selectedStop.activities.map((activity) => <div className={`activity-row ${scheduleItems.some((item) => item.sourceActivityId === activity.id) ? "selected" : ""}`} key={activity.id}>
+                  <button className="check" title="Aggiungi alla prima giornata disponibile" onClick={() => scheduleActivity(selectedStop, activity)}>{scheduleItems.some((item) => item.sourceActivityId === activity.id) ? "✓" : "+"}</button>
                   <div><b>{activity.name}</b><small>{activity.description}</small>{activity.sourceUrl && <a href={activity.sourceUrl} target="_blank" rel="noreferrer">Fonte ↗</a>}</div>
                   <label><input type="number" min="0" value={activity.price} onChange={(event) => updateActivityPrice(selectedStop.id, activity.id, Number(event.target.value) || 0)} /> €</label>
                 </div>)}
               </div>
               <div className="gemini-box">
-                <div className="gemini-title"><span>✦</span><div><b>Ricerca con Gemini</b><small>Google Maps · risultati e prezzi attuali</small></div></div>
+                <div className="gemini-title"><span>✦</span><div><b>Trova altre attività</b><small>Gemini cerca, poi le colloca nella prima giornata libera</small></div></div>
                 <textarea value={aiQuery} onChange={(event) => setAiQuery(event.target.value)} aria-label="Domanda per Gemini" />
                 <button className="primary" onClick={runActivitySearch} disabled={aiLoading}>{aiLoading ? "Sto cercando…" : `Cerca a ${selectedStop.name}`}</button>
                 {aiError && <p className="error">{aiError}</p>}
                 {aiAnswer && <p className="ai-answer">{aiAnswer}</p>}
                 <div className="suggestions">
-                  {aiSuggestions.map((suggestion, index) => <div className="suggestion" key={`${suggestion.name}-${index}`}><div><b>{suggestion.name}</b><p>{suggestion.description}</p><small>{suggestion.bookingNote}</small></div><div className="suggestion-action"><strong>{euro.format(Number(suggestion.priceEstimate) || 0)}</strong><button onClick={() => addSuggestion(suggestion)}>Aggiungi al piano e budget</button></div></div>)}
+                  {aiSuggestions.map((suggestion, index) => <div className="suggestion" key={`${suggestion.name}-${index}`}><div><b>{suggestion.name}</b><p>{suggestion.description}</p><small>{suggestion.bookingNote}</small></div><div className="suggestion-action"><strong>{euro.format(Number(suggestion.priceEstimate) || 0)}</strong><button onClick={() => addSuggestion(suggestion)}>Pianifica nell’agenda</button></div></div>)}
                 </div>
                 {aiSources.length > 0 && <div className="sources">{aiSources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.title} ↗</a>)}</div>}
               </div>
@@ -666,11 +868,100 @@ export function ChinaPlanner() {
       )}
 
       {section === "calendar" && <section className="panel-section">
-        <div className="section-title"><div><p className="eyebrow">Si aggiorna con le tappe</p><h2>Calendario del viaggio</h2></div><span>{calendarDays.length} giornate pianificate</span></div>
-        <div className="calendar-grid">
-          <article className="calendar-card flight"><small>Lun 16 novembre</small><b>Venezia → Pechino</b><p>VCE 16:55 · Monaco · volo notturno</p></article>
-          {calendarDays.map((entry) => <article key={dateKey(entry.date)} className={`calendar-card ${entry.type}`}><small>{longDate.format(entry.date)}</small><b>{entry.city}</b><p>{entry.detail}</p></article>)}
-          <article className="calendar-card flight"><small>Ven 4 dicembre</small><b>Shanghai → Venezia</b><p>PVG 09:40 · arrivo a Venezia 18:25</p></article>
+        <div className="section-title agenda-title">
+          <div><p className="eyebrow">Agenda operativa · salvata su questo dispositivo</p><h2>Giorno per giorno, ora per ora</h2></div>
+          <div className="agenda-summary"><span><b>{scheduleItems.length}</b> attività</span><span><b>{bookingCount}</b> da prenotare</span><span><b>{euro.format(activitiesCost)}</b> pianificati</span><button onClick={() => window.print()}>Stampa piano</button></div>
+        </div>
+
+        <div className="day-strip" aria-label="Giorni del viaggio">
+          {calendarDays.map((entry, index) => {
+            const itemCount = scheduleItems.filter((item) => item.date === entry.dateKey).length;
+            return <button key={entry.dateKey} className={`${selectedDate === entry.dateKey ? "active" : ""} ${entry.type}`} onClick={() => setSelectedDate(entry.dateKey)}>
+              <small>G{index + 1}</small>
+              <b>{shortDate.format(entry.date)}</b>
+              <span>{entry.city}</span>
+              <i>{itemCount} blocchi</i>
+            </button>;
+          })}
+        </div>
+
+        <div className="agenda-layout">
+          <div className="agenda-main">
+            <article className="card day-overview">
+              <div>
+                <p className="eyebrow">{selectedDay?.type === "travel" ? "Giornata di spostamento" : "Giornata in città"}</p>
+                <h2>{selectedDay ? longDate.format(selectedDay.date) : ""}</h2>
+                <strong>{selectedDay?.city}</strong>
+              </div>
+              <div className="day-kpis">
+                <span><b>{selectedDayItems.length}</b> blocchi</span>
+                <span><b>{selectedDayItems[0]?.startTime || "—"}</b> inizio</span>
+                <span><b>{selectedDayItems.at(-1)?.endTime || "—"}</b> fine</span>
+                <span><b>{euro.format(dayCost)}</b> giornata</span>
+              </div>
+            </article>
+            {conflictingIds.size > 0 && <div className="agenda-warning"><b>Attenzione agli orari</b><span>Due o più attività si sovrappongono. Modifica inizio o fine nei blocchi evidenziati.</span></div>}
+
+            <div className="time-plan">
+              {selectedDayItems.length === 0 && <div className="empty-day"><span>+</span><b>Questa giornata è ancora libera</b><p>Aggiungi un’attività manualmente o chiedi a Gemini di costruire un programma realistico.</p></div>}
+              {selectedDayItems.map((item) => <article className={`schedule-item category-${item.category} ${conflictingIds.has(item.id) ? "conflict" : ""}`} key={item.id}>
+                <div className="schedule-time">
+                  <label>Inizio<input type="time" value={item.startTime} onChange={(event) => updateScheduleItem(item.id, { startTime: event.target.value })} /></label>
+                  <span>↓</span>
+                  <label>Fine<input type="time" value={item.endTime} onChange={(event) => updateScheduleItem(item.id, { endTime: event.target.value })} /></label>
+                </div>
+                <div className="schedule-content">
+                  <div className="schedule-topline">
+                    <input className="schedule-name" aria-label="Nome attività" value={item.name} onChange={(event) => updateScheduleItem(item.id, { name: event.target.value })} />
+                    <select aria-label="Categoria" value={item.category} onChange={(event) => updateScheduleItem(item.id, { category: event.target.value as ScheduleItem["category"] })}>
+                      <option value="visita">Visita</option><option value="trasporto">Trasporto</option><option value="cibo">Cibo</option><option value="tempo-libero">Tempo libero</option><option value="hotel">Hotel</option>
+                    </select>
+                  </div>
+                  <input className="schedule-location" aria-label="Luogo" value={item.location} placeholder="Luogo, indirizzo o stazione" onChange={(event) => updateScheduleItem(item.id, { location: event.target.value })} />
+                  <textarea aria-label="Note attività" value={item.notes} placeholder="Biglietti, cosa portare, note pratiche…" onChange={(event) => updateScheduleItem(item.id, { notes: event.target.value })} />
+                  <div className="schedule-meta">
+                    <label>Costo per 2 <span><input type="number" min="0" value={item.price} onChange={(event) => updateScheduleItem(item.id, { price: Number(event.target.value) || 0 })} /> €</span></label>
+                    <label>Stato <select value={item.bookingStatus} onChange={(event) => updateScheduleItem(item.id, { bookingStatus: event.target.value as ScheduleItem["bookingStatus"] })}><option value="da-prenotare">Da prenotare</option><option value="prenotato">Prenotato</option><option value="non-serve">Nessuna prenotazione</option></select></label>
+                    {item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noreferrer">Fonte ↗</a>}
+                    <button className="danger-text" onClick={() => removeScheduleItem(item.id)}>Elimina</button>
+                  </div>
+                </div>
+              </article>)}
+            </div>
+
+            <form className="card add-plan-card" onSubmit={addScheduleItem}>
+              <div className="card-head"><div><p className="eyebrow">Inserimento rapido</p><h3>Nuova attività</h3></div><span>{selectedDay?.city}</span></div>
+              <div className="add-plan-grid">
+                <label>Inizio<input type="time" value={newScheduleItem.startTime} onChange={(event) => setNewScheduleItem((current) => ({ ...current, startTime: event.target.value }))} /></label>
+                <label>Fine<input type="time" value={newScheduleItem.endTime} onChange={(event) => setNewScheduleItem((current) => ({ ...current, endTime: event.target.value }))} /></label>
+                <label className="wide">Attività<input required value={newScheduleItem.name} placeholder="Es. Tempio del Cielo" onChange={(event) => setNewScheduleItem((current) => ({ ...current, name: event.target.value }))} /></label>
+                <label>Categoria<select value={newScheduleItem.category} onChange={(event) => setNewScheduleItem((current) => ({ ...current, category: event.target.value as ScheduleItem["category"] }))}><option value="visita">Visita</option><option value="trasporto">Trasporto</option><option value="cibo">Cibo</option><option value="tempo-libero">Tempo libero</option><option value="hotel">Hotel</option></select></label>
+                <label className="wide">Luogo<input value={newScheduleItem.location} placeholder="Indirizzo, quartiere o stazione" onChange={(event) => setNewScheduleItem((current) => ({ ...current, location: event.target.value }))} /></label>
+                <label>Costo per 2<input type="number" min="0" value={newScheduleItem.price} onChange={(event) => setNewScheduleItem((current) => ({ ...current, price: Number(event.target.value) || 0 }))} /></label>
+                <label>Stato<select value={newScheduleItem.bookingStatus} onChange={(event) => setNewScheduleItem((current) => ({ ...current, bookingStatus: event.target.value as ScheduleItem["bookingStatus"] }))}><option value="da-prenotare">Da prenotare</option><option value="prenotato">Prenotato</option><option value="non-serve">Nessuna prenotazione</option></select></label>
+                <label className="full">Note<textarea value={newScheduleItem.notes} placeholder="Tempi di trasferimento, biglietti, promemoria…" onChange={(event) => setNewScheduleItem((current) => ({ ...current, notes: event.target.value }))} /></label>
+              </div>
+              <button className="primary" type="submit">+ Aggiungi alla giornata</button>
+            </form>
+          </div>
+
+          <aside className="card day-ai">
+            <div className="gemini-title"><span>✦</span><div><b>Gemini pianifica la giornata</b><small>{selectedDay?.city} · considera ciò che è già in agenda</small></div></div>
+            <p className="day-ai-intro">Descrivi interessi e ritmo. Riceverai una sequenza con orari, pause, zone coerenti, costi e indicazioni di prenotazione.</p>
+            <textarea value={dayAiQuery} onChange={(event) => setDayAiQuery(event.target.value)} aria-label="Preferenze per la giornata" />
+            <button className="primary full-button" onClick={runDayPlan} disabled={dayAiLoading}>{dayAiLoading ? "Sto costruendo la giornata…" : "✦ Pianifica questa giornata"}</button>
+            {aiError && <p className="error">{aiError}</p>}
+            {dayAiAnswer && <p className="ai-answer">{dayAiAnswer}</p>}
+            {dayAiSuggestions.length > 0 && <button className="add-entire-day" onClick={addEntireAiDay}>Aggiungi tutta la proposta ({dayAiSuggestions.length})</button>}
+            <div className="day-suggestions">
+              {dayAiSuggestions.map((suggestion, index) => <article key={`${suggestion.name}-${index}`}>
+                <div className="suggestion-time"><b>{suggestion.startTime || "09:00"}</b><span>→</span><b>{suggestion.endTime || "11:00"}</b></div>
+                <div><strong>{suggestion.name}</strong><small>{suggestion.location || selectedDay?.city}</small><p>{suggestion.description}</p><em>{suggestion.bookingNote}</em></div>
+                <div className="day-suggestion-action"><b>{euro.format(Number(suggestion.priceEstimate) || 0)}</b><button onClick={() => addDaySuggestion(suggestion)}>Aggiungi</button></div>
+              </article>)}
+            </div>
+            {aiSources.length > 0 && <div className="sources">{aiSources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.title} ↗</a>)}</div>}
+          </aside>
         </div>
       </section>}
 
@@ -702,12 +993,12 @@ export function ChinaPlanner() {
           <article className="budget-category locked"><span>Voli internazionali</span><b>{euro.format(FLIGHTS_COST)}</b><small>Costo confermato</small></article>
           <article className="budget-category"><span>Hotel</span><b>{euro.format(hotelCost)}</b><small>{usedNights} notti · modifica il prezzo nelle tappe</small></article>
           <article className="budget-category"><span>Trasporti tra tappe</span><b>{euro.format(transportCost)}</b><small>{normalizedLegs.filter((leg) => leg.included).length} collegamenti inclusi</small></article>
-          <article className="budget-category highlight"><span>Attività selezionate</span><b>{euro.format(activitiesCost)}</b><small>{selectedActivities.length} esperienze</small></article>
+          <article className="budget-category highlight"><span>Attività in agenda</span><b>{euro.format(activitiesCost)}</b><small>{budgetedActivities.length} esperienze pianificate</small></article>
           <article className="budget-category editable"><span>Cibo e bevande</span><label><input type="number" min="0" value={foodBudget} onChange={(event) => setFoodBudget(Number(event.target.value) || 0)} /> €</label><small>Previsionale per due</small></article>
           <article className="budget-category editable"><span>Trasporti locali</span><label><input type="number" min="0" value={localBudget} onChange={(event) => setLocalBudget(Number(event.target.value) || 0)} /> €</label><small>Didi, metro e transfer aeroporti</small></article>
           <article className="budget-category editable"><span>Assicurazione, connettività, extra</span><label><input type="number" min="0" value={otherBudget} onChange={(event) => setOtherBudget(Number(event.target.value) || 0)} /> €</label><small>Margine di sicurezza</small></article>
         </div>
-        <article className="card budget-detail"><div className="card-head"><div><p className="eyebrow">Dalla mappa</p><h2>Attività nel budget</h2></div><b>{euro.format(activitiesCost)}</b></div><div>{selectedActivities.length === 0 ? <p className="empty padded">Seleziona un’attività dalla mappa o aggiungila dai risultati Gemini.</p> : selectedActivities.map((activity) => <div className="budget-row" key={`${activity.city}-${activity.id}`}><span>{activity.city}</span><div><b>{activity.name}</b><small>{activity.description}</small></div><strong>{euro.format(activity.price)}</strong></div>)}</div></article>
+        <article className="card budget-detail"><div className="card-head"><div><p className="eyebrow">Dall’agenda</p><h2>Attività nel budget</h2></div><b>{euro.format(activitiesCost)}</b></div><div>{budgetedActivities.length === 0 ? <p className="empty padded">Aggiungi attività all’agenda per includerle nel budget.</p> : budgetedActivities.map((activity) => <div className="budget-row" key={`${activity.city}-${activity.id}`}><span>{activity.city}<small>{activity.date} · {activity.startTime}</small></span><div><b>{activity.name}</b><small>{activity.notes}</small></div><strong>{euro.format(activity.price)}</strong></div>)}</div></article>
       </section>}
 
       {section === "planner" && <section className="planner-grid">

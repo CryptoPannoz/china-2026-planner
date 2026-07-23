@@ -21,10 +21,13 @@ test("renderizza il planner Cina 2026", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>Cina 2026 — Alberto &amp; Sofia<\/title>/i);
-  assert.match(html, /Un viaggio che/);
+  assert.match(html, /Ogni giorno/);
   assert.match(html, /Arrivo a Pechino/);
   assert.match(html, /Partenza da Shanghai/);
-  assert.match(html, /Ricerca con Gemini/);
+  assert.match(html, /Giorno per giorno, ora per ora/);
+  assert.match(html, /Nuova attività/);
+  assert.match(html, /Gemini pianifica la giornata/);
+  assert.match(html, /Arrivo a Pechino e transfer/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
 });
 
@@ -36,10 +39,13 @@ test("mantiene Gemini esclusivamente lato server", async () => {
   ]);
 
   assert.match(client, /fetch\("\/api\/gemini"/);
+  assert.match(client, /action:\s*"day-plan"/);
+  assert.match(client, /scheduleItems/);
   assert.doesNotMatch(client, /x-goog-api-key|GEMINI_API_KEY/);
   assert.match(route, /process\.env\.GEMINI_API_KEY/);
   assert.match(route, /googleMaps/);
   assert.match(route, /googleSearch/);
+  assert.match(route, /action === "day-plan"/);
   assert.equal(envExample.trim().split("\n").at(-1), "GEMINI_API_KEY=");
 });
 
