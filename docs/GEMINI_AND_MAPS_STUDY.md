@@ -23,6 +23,23 @@ La URI API ufficiale di Amap consente di aprire marker e navigazione sia da desk
 2. Fase successiva: campo di ricerca Amap nel planner, risultati selezionabili, memorizzazione di coordinate e POI.
 3. Ultima fase: indicazioni hotel → attività e confronto auto/mezzi pubblici/a piedi.
 
+Una mappa Amap incorporata dentro GitHub Pages richiede una chiave Web JS e il
+relativo codice di sicurezza. Per non pubblicare credenziali in chiaro, la
+versione attuale usa la URI API ufficiale come mappa principale: le tappe si
+aprono realmente in Amap e l’app mobile viene richiamata quando disponibile.
+La vecchia panoramica Leaflet resta disponibile soltanto come vista secondaria.
+
+## Collegamenti WeChat e Alipay
+
+Non esiste un collegamento universale sicuro che permetta a un normale sito web
+di cercare liberamente qualsiasi attività dentro WeChat o Alipay. I Mini Program
+usano identificativi e percorsi specifici del servizio.
+
+Per questo il planner consente di incollare su hotel, attività e trasporti il
+link effettivamente condiviso dal relativo Mini Program o esercente. Il pulsante
+WeChat o Alipay appare soltanto quando è stato salvato un link valido `https`,
+`weixin://`, `alipay://` o `alipays://`.
+
 ## Fattibilità Gemini
 
 Gemini è fattibile, ma non va richiamato direttamente con una chiave inserita nel codice di GitHub Pages. La documentazione ufficiale avverte che una chiave nel client web è estraibile.

@@ -73,7 +73,26 @@ test("struttura agenda, mappe e registro condiviso", async () => {
   assert.match(planner, /Ultimo autosalvataggio/);
   assert.match(planner, /Chi ha modificato cosa/);
   assert.match(planner, /compressCoverPhoto/);
+  assert.match(planner, /type HotelStay/);
+  assert.match(planner, /Hotel e soggiorni/);
+  assert.match(planner, /Data check-in/);
+  assert.match(planner, /Data check-out/);
+  assert.match(planner, /selectedDayHotels/);
+  assert.match(planner, /Link condiviso WeChat/);
+  assert.match(planner, /Link condiviso Alipay/);
+  assert.match(planner, /amapStopUrl/);
+  assert.doesNotMatch(planner, /<option value="hotel">Hotel \/ notte<\/option>/);
   assert.match(rules, /change-log/);
   assert.match(rules, /allow read, create: if isPlannerMember/);
   assert.match(rules, /allow update, delete: if false/);
+});
+
+test("include la nuova copertina fotografica", async () => {
+  const [planner, image] = await Promise.all([
+    source("app/ChinaPlanner.tsx"),
+    readFile(new URL("../public/china-hero-couple.jpg", import.meta.url)),
+  ]);
+
+  assert.match(planner, /china-hero-couple\.jpg/);
+  assert.ok(image.byteLength > 100_000);
 });

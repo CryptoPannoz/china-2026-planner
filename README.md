@@ -8,12 +8,14 @@ Permette di:
 
 - modificare tappe, notti e trasporti;
 - organizzare ogni giornata per orario;
-- aggiungere o eliminare attività, trasferimenti e hotel/notte;
+- aggiungere o eliminare attività e trasferimenti;
+- gestire gli hotel in una sezione indipendente con check-in e check-out;
 - creare categorie personali;
 - inserire costi in euro oppure yuan;
 - modificare il cambio yuan/euro;
 - aggiungere e togliere liberamente voci di costo;
-- aprire luoghi e destinazioni in Amap;
+- aprire tappe, luoghi e destinazioni direttamente in Amap;
+- salvare collegamenti condivisi da WeChat e Alipay;
 - vedere chi ha aggiunto, modificato o cancellato cosa;
 - caricare una copertina privata, visibile dopo l'accesso;
 - sincronizzare agenda, budget, checklist e note tra computer e telefono;
