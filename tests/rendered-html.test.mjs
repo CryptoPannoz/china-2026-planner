@@ -84,6 +84,8 @@ test("mostra agenda per città e attività clou nell'itinerario", async () => {
   assert.match(planner, /selectedStopDays/);
   assert.match(planner, /trip-strip/);
   assert.match(planner, /openDayInAgenda/);
+  assert.match(planner, /scheduleClouOnSelectedDay/);
+  assert.match(planner, /day-clou-chips/);
 });
 
 test("propone varianti di tappe aggiungibili o scartabili", async () => {

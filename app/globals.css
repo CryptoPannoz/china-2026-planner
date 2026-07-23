@@ -428,6 +428,16 @@ h3 { margin-bottom: 12px; font: 700 19px/1.1 Georgia, serif; }
 .restore-suggestions { margin-top: 11px; width: 100%; padding: 9px; border: 1px dashed var(--line); border-radius: 10px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 800; cursor: pointer; }
 .restore-suggestions:hover { color: var(--ink); background: var(--green-soft); }
 
+/* --- Chips attività clou in agenda --- */
+.day-clou { margin-bottom: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,253,248,.8); }
+.day-clou-label { display: block; margin-bottom: 8px; color: var(--orange); font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.day-clou-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.day-clou-chips button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border: 1px solid var(--line); border-radius: 999px; background: white; font-size: 11px; font-weight: 700; cursor: pointer; }
+.day-clou-chips button:hover:not(:disabled) { border-color: #9bb7a5; background: var(--green-soft); }
+.day-clou-chips button.done { color: var(--muted); background: #f0f6f1; border-color: #c9dccf; cursor: default; }
+.day-clou-chips button i { font-style: normal; font-weight: 900; color: var(--green); }
+.day-clou-chips button em { color: var(--muted); font-size: 10px; font-style: normal; font-weight: 800; }
+
 /* --- Spese giornaliere e splitwise --- */
 .day-expenses { margin-top: 16px; }
 .expense-list, .expense-register { display: grid; gap: 8px; }

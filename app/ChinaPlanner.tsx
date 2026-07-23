@@ -1487,6 +1487,37 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     if (removed) recordChange("Attività clou rimossa", `${stop?.name || "Tappa"}: ${removed.name}`);
   }
 
+  function scheduleClouOnSelectedDay(activity: Activity) {
+    if (!selectedDay) return;
+    const stop = stops.find((item) => item.id === selectedDay.stopId);
+    if (!stop || scheduleItems.some((item) => item.sourceActivityId === activity.id)) return;
+    const count = scheduleItems.filter((item) => item.date === selectedDay.dateKey).length;
+    const slots = [["09:00", "12:00"], ["14:00", "17:00"], ["18:00", "20:00"]];
+    const [startTime, endTime] = slots[Math.min(count, slots.length - 1)];
+    setScheduleItems((current) => [...current, {
+      id: uid("plan"),
+      date: selectedDay.dateKey,
+      stopId: stop.id,
+      startTime,
+      endTime,
+      name: activity.name,
+      kind: "activity" as ScheduleKind,
+      category: "visita",
+      location: stop.name,
+      notes: activity.description,
+      price: activity.price,
+      currency: activity.currency || "EUR",
+      bookingStatus: "da-prenotare" as ScheduleItem["bookingStatus"],
+      sourceUrl: activity.sourceUrl,
+      sourceActivityId: activity.id,
+    }]);
+    setStops((current) => current.map((item) => item.id !== stop.id ? item : {
+      ...item,
+      activities: item.activities.map((entry) => entry.id === activity.id ? { ...entry, selected: true } : entry),
+    }));
+    recordChange("Attività clou aggiunta in agenda", `${activity.name} · ${selectedDay.dateKey}`);
+  }
+
   function addSuggestedStop(suggestion: SuggestedStop) {
     if (stops.some((stop) => stop.id === suggestion.id)) return;
     const stop: Stop = {
@@ -1805,6 +1836,18 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
               })}
             </div>
             {conflictingIds.size > 0 && <div className="agenda-warning"><b>Attenzione agli orari</b><span>Due o più attività si sovrappongono. Modifica inizio o fine nei blocchi evidenziati.</span></div>}
+
+            {(stops.find((item) => item.id === selectedDay?.stopId)?.activities.length || 0) > 0 && <div className="day-clou">
+              <span className="day-clou-label">✦ Attività clou di {selectedDay?.city}</span>
+              <div className="day-clou-chips">
+                {stops.find((item) => item.id === selectedDay?.stopId)?.activities.map((activity) => {
+                  const scheduled = scheduleItems.some((item) => item.sourceActivityId === activity.id);
+                  return <button key={activity.id} className={scheduled ? "done" : ""} disabled={scheduled} title={scheduled ? "Già in agenda" : `Aggiungi a questa giornata · ${activity.description}`} onClick={() => scheduleClouOnSelectedDay(activity)}>
+                    <i>{scheduled ? "✓" : "+"}</i>{activity.name}{activity.price > 0 && <em>{formatCost(activity.price, activity.currency)}</em>}
+                  </button>;
+                })}
+              </div>
+            </div>}
 
             <div className="time-plan">
               {selectedDayItems.length === 0 && <div className="empty-day"><span>+</span><b>Questa giornata è ancora libera</b><p>Aggiungi il primo blocco con il modulo qui sotto.</p></div>}
