@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  SESSION_COOKIE_NAME,
+  verifyAllowedSessionCookie,
+} from "@/lib/firebase-admin";
 
 type GroundingChunk = {
   web?: { title?: string; uri?: string };
@@ -52,6 +56,16 @@ function safeText(value: unknown, max = 600) {
 }
 
 export async function POST(request: NextRequest) {
+  const user = await verifyAllowedSessionCookie(
+    request.cookies.get(SESSION_COOKIE_NAME)?.value,
+  );
+  if (!user) {
+    return NextResponse.json(
+      { error: "Accedi con un account autorizzato per usare Gemini." },
+      { status: 401 },
+    );
+  }
+
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return NextResponse.json(

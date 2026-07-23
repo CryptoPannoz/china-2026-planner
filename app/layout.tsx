@@ -13,6 +13,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title,
     description,
+    robots: { index: false, follow: false, noarchive: true },
     openGraph: { title, description, images: [{ url: imageUrl, width: 1536, height: 1024, alt: "Cina 2026 — Alberto & Sofia" }] },
     twitter: { card: "summary_large_image", title, description, images: [imageUrl] },
   };

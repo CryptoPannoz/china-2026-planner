@@ -371,7 +371,7 @@ async function photoStore(mode: "get" | "put" | "delete", value?: PhotoItem | st
   });
 }
 
-export function ChinaPlanner() {
+export function ChinaPlanner({ currentUserEmail }: { currentUserEmail: string }) {
   const [section, setSection] = useState("calendar");
   const [stops, setStops] = useState<Stop[]>(initialStops);
   const [legs, setLegs] = useState<Leg[]>(initialLegs);
@@ -785,6 +785,18 @@ export function ChinaPlanner() {
           <p className="lead">Un’agenda reale per costruire il viaggio: attività, tempi, spostamenti, prenotazioni e costi restano collegati.</p>
         </div>
         <div className="anchor-card">
+          <div className="account-bar">
+            <span>{currentUserEmail}</span>
+            <button
+              type="button"
+              onClick={async () => {
+                await fetch("/api/session/logout", { method: "POST" });
+                window.location.assign("/login");
+              }}
+            >
+              Esci
+            </button>
+          </div>
           <span>Piano operativo</span>
           <strong>{plannedDayCount} / {calendarDays.length} giorni</strong>
           <small>{scheduleItems.length} blocchi orari · {bookingCount} da prenotare</small>
