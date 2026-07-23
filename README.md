@@ -8,10 +8,14 @@ Permette di:
 
 - modificare tappe, notti e trasporti;
 - organizzare ogni giornata per orario;
-- aggiungere o eliminare attività;
+- aggiungere o eliminare attività, trasferimenti e hotel/notte;
+- creare categorie personali;
 - inserire costi in euro oppure yuan;
 - modificare il cambio yuan/euro;
 - aggiungere e togliere liberamente voci di costo;
+- aprire luoghi e destinazioni in Amap;
+- vedere chi ha aggiunto, modificato o cancellato cosa;
+- caricare una copertina privata, visibile dopo l'accesso;
 - sincronizzare agenda, budget, checklist e note tra computer e telefono;
 - continuare a lavorare temporaneamente anche senza connessione.
 
@@ -44,3 +48,6 @@ Il progetto usa l'export statico di Next.js. Il workflow
 
 Il database Firestore resta nel progetto `china-2026-bebroggi`; GitHub Pages
 non ospita né espone i dati del viaggio.
+
+Lo studio per l’eventuale ritorno di Gemini e per l’evoluzione della mappa è in
+[`docs/GEMINI_AND_MAPS_STUDY.md`](docs/GEMINI_AND_MAPS_STUDY.md).

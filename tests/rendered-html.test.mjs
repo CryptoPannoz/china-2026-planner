@@ -59,3 +59,21 @@ test("gestisce costi aggiungibili e rimovibili in euro e yuan", async () => {
   assert.match(planner, /cnyPerEuro/);
   assert.match(planner, /CNY ¥/);
 });
+
+test("struttura agenda, mappe e registro condiviso", async () => {
+  const [planner, rules] = await Promise.all([
+    source("app/ChinaPlanner.tsx"),
+    source("firestore.rules"),
+  ]);
+
+  assert.match(planner, /type ScheduleKind = "activity" \| "transport" \| "hotel"/);
+  assert.match(planner, /Crea categoria/);
+  assert.match(planner, /Aggiungi trasferimento/);
+  assert.match(planner, /Apri in Amap/);
+  assert.match(planner, /Ultimo autosalvataggio/);
+  assert.match(planner, /Chi ha modificato cosa/);
+  assert.match(planner, /compressCoverPhoto/);
+  assert.match(rules, /change-log/);
+  assert.match(rules, /allow read, create: if isPlannerMember/);
+  assert.match(rules, /allow update, delete: if false/);
+});

@@ -1,11 +1,12 @@
 "use client";
 
-import { Dispatch, FormEvent, SetStateAction, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, Dispatch, FormEvent, SetStateAction, useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
-import { doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
+import { addDoc, collection, doc, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, type Timestamp } from "firebase/firestore";
 import { auth, db, googleProvider } from "@/lib/firebase";
 
 type Currency = "EUR" | "CNY";
+type ScheduleKind = "activity" | "transport" | "hotel";
 
 type Activity = {
   id: string;
@@ -24,8 +25,12 @@ type ScheduleItem = {
   startTime: string;
   endTime: string;
   name: string;
-  category: "visita" | "trasporto" | "cibo" | "tempo-libero" | "hotel";
+  kind?: ScheduleKind;
+  category: string;
   location: string;
+  fromLocation?: string;
+  transportMode?: string;
+  mapUrl?: string;
   notes: string;
   price: number;
   currency?: Currency;
@@ -71,6 +76,17 @@ type PlanData = {
   notes: string;
   cnyPerEuro: number;
   costEntries: CostEntry[];
+  customCategories: string[];
+  coverPhoto?: string;
+};
+
+type ChangeLogEntry = {
+  id: string;
+  authorEmail: string;
+  authorName: string;
+  action: string;
+  detail: string;
+  createdAt?: Timestamp | null;
 };
 
 type LeafletMap = {
@@ -111,6 +127,18 @@ const DEPARTURE_DATE = new Date("2026-12-04T00:00:00");
 const TRIP_NIGHTS = Math.round((DEPARTURE_DATE.getTime() - ARRIVAL_DATE.getTime()) / 86_400_000);
 const FLIGHTS_COST = 1384.44;
 const PLAN_STORAGE_KEY = "china-planner-v2";
+const BUILT_IN_CATEGORIES = [
+  { value: "visita", label: "Visita" },
+  { value: "cibo", label: "Cibo" },
+  { value: "tempo-libero", label: "Tempo libero" },
+  { value: "shopping", label: "Shopping" },
+  { value: "spettacolo", label: "Spettacolo" },
+];
+const KIND_LABELS: Record<ScheduleKind, string> = {
+  activity: "Attività",
+  transport: "Trasporto",
+  hotel: "Hotel / notte",
+};
 const ALLOWED_EMAILS = new Set([
   "bebroggi@gmail.com",
   "sofiakovaleva1998@gmail.com",
@@ -211,12 +239,73 @@ function normalizePlanData(value: unknown): PlanData | null {
   return {
     stops: data.stops,
     legs: data.legs,
-    scheduleItems: data.scheduleItems,
+    scheduleItems: data.scheduleItems.map(normalizeScheduleItem),
     checklist: Array.isArray(data.checklist) ? data.checklist : defaultChecklist.map(() => false),
     notes: typeof data.notes === "string" ? data.notes : "",
     cnyPerEuro: typeof data.cnyPerEuro === "number" ? data.cnyPerEuro : 8,
     costEntries: Array.isArray(data.costEntries) ? data.costEntries : [],
+    customCategories: Array.isArray(data.customCategories) ? data.customCategories.filter((item): item is string => typeof item === "string") : [],
+    coverPhoto: typeof data.coverPhoto === "string" ? data.coverPhoto : "",
   };
+}
+
+function inferScheduleKind(category: string): ScheduleKind {
+  if (category === "trasporto" || category === "trasferimento") return "transport";
+  if (category === "hotel" || category === "pernottamento") return "hotel";
+  return "activity";
+}
+
+function normalizeScheduleItem(item: ScheduleItem): ScheduleItem {
+  const kind = item.kind || inferScheduleKind(item.category);
+  const routeParts = kind === "transport" ? item.location.split("→").map((part) => part.trim()).filter(Boolean) : [];
+  return {
+    ...item,
+    kind,
+    category: item.category === "trasporto" ? "trasferimento" : item.category === "hotel" ? "pernottamento" : item.category,
+    fromLocation: item.fromLocation || (routeParts.length > 1 ? routeParts[0] : ""),
+    location: routeParts.length > 1 ? routeParts.at(-1) || item.location : item.location,
+  };
+}
+
+function scheduleKind(item: ScheduleItem): ScheduleKind {
+  return item.kind || inferScheduleKind(item.category);
+}
+
+function amapSearchUrl(place: string, city = "") {
+  const queryText = [place, city].filter(Boolean).join(" ");
+  return `https://uri.amap.com/search?keyword=${encodeURIComponent(queryText)}&src=china2026planner&callnative=1`;
+}
+
+function mapLinkFor(item: ScheduleItem, city: string) {
+  if (item.mapUrl?.trim()) return item.mapUrl.trim();
+  const place = item.location.split("→").at(-1)?.trim() || item.location.trim();
+  return place ? amapSearchUrl(place, city) : "";
+}
+
+async function compressCoverPhoto(file: File) {
+  if (!file.type.startsWith("image/")) throw new Error("Scegli un file immagine.");
+  if (file.size > 12_000_000) throw new Error("La foto supera 12 MB.");
+
+  const source = await createImageBitmap(file);
+  const maxWidth = 1400;
+  const maxHeight = 900;
+  const scale = Math.min(1, maxWidth / source.width, maxHeight / source.height);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(source.width * scale));
+  canvas.height = Math.max(1, Math.round(source.height * scale));
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Impossibile preparare la foto.");
+  context.drawImage(source, 0, 0, canvas.width, canvas.height);
+  source.close();
+
+  let quality = .8;
+  let dataUrl = canvas.toDataURL("image/jpeg", quality);
+  while (dataUrl.length > 560_000 && quality > .45) {
+    quality -= .08;
+    dataUrl = canvas.toDataURL("image/jpeg", quality);
+  }
+  if (dataUrl.length > 650_000) throw new Error("La foto resta troppo grande: scegline una più leggera.");
+  return dataUrl;
 }
 
 function addDays(date: Date, amount: number) {
@@ -433,11 +522,15 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
   const [selectedStopId, setSelectedStopId] = useState("beijing");
   const [newStopName, setNewStopName] = useState("");
   const [newScheduleItem, setNewScheduleItem] = useState({
+    kind: "activity" as ScheduleKind,
     startTime: "09:00",
     endTime: "11:00",
     name: "",
-    category: "visita" as ScheduleItem["category"],
+    category: "visita",
+    fromLocation: "",
     location: "",
+    transportMode: "",
+    mapUrl: "",
     notes: "",
     price: 0,
     currency: "EUR" as Currency,
@@ -452,9 +545,15 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     { id: "extras", label: "Assicurazione, connettività ed extra", amount: 720, currency: "EUR" },
   ]);
   const [newCost, setNewCost] = useState({ label: "", amount: 0, currency: "EUR" as Currency });
+  const [customCategories, setCustomCategories] = useState<string[]>([]);
+  const [newCategory, setNewCategory] = useState("");
+  const [coverPhoto, setCoverPhoto] = useState("");
+  const [photoError, setPhotoError] = useState("");
+  const [changeLog, setChangeLog] = useState<ChangeLogEntry[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [cloudReady, setCloudReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState<"loading" | "saving" | "synced" | "error">("loading");
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const lastCloudValueRef = useRef("");
 
   useEffect(() => {
@@ -469,6 +568,8 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
           setNotes(saved.notes);
           setCnyPerEuro(saved.cnyPerEuro);
           setCostEntries(saved.costEntries);
+          setCustomCategories(saved.customCategories);
+          setCoverPhoto(saved.coverPhoto || "");
         }
       } catch {
         // Mantiene i dati iniziali se il salvataggio locale non è leggibile.
@@ -499,9 +600,13 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
         setNotes(remotePlan.notes);
         setCnyPerEuro(remotePlan.cnyPerEuro);
         setCostEntries(remotePlan.costEntries);
+        setCustomCategories(remotePlan.customCategories);
+        setCoverPhoto(remotePlan.coverPhoto || "");
         localStorage.setItem(PLAN_STORAGE_KEY, serialized);
         setCloudReady(true);
         setSyncStatus("synced");
+        const updatedAt = snapshot.data().updatedAt as Timestamp | undefined;
+        setLastSavedAt(updatedAt?.toDate?.() || new Date());
         return;
       }
 
@@ -512,6 +617,8 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
         checklist: defaultChecklist.map(() => false),
         notes: "",
         cnyPerEuro: 8,
+        customCategories: [],
+        coverPhoto: "",
         costEntries: [
           { id: "food", label: "Cibo e bevande", amount: 900, currency: "EUR" },
           { id: "local", label: "Trasporti locali", amount: 300, currency: "EUR" },
@@ -531,6 +638,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
         await setDoc(planDocument, { ...seedPlan, updatedAt: serverTimestamp() });
         setCloudReady(true);
         setSyncStatus("synced");
+        setLastSavedAt(new Date());
       } catch {
         setSyncStatus("error");
       }
@@ -541,7 +649,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
 
   useEffect(() => {
     if (!hydrated) return;
-    const planData: PlanData = { stops, legs, scheduleItems, checklist, notes, cnyPerEuro, costEntries };
+    const planData: PlanData = { stops, legs, scheduleItems, checklist, notes, cnyPerEuro, costEntries, customCategories, coverPhoto };
     const serialized = JSON.stringify(planData);
     localStorage.setItem(PLAN_STORAGE_KEY, serialized);
 
@@ -553,13 +661,22 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
         await setDoc(doc(db, "travel-plans", "china-2026"), { ...safePlanData, updatedAt: serverTimestamp() });
         lastCloudValueRef.current = serialized;
         setSyncStatus("synced");
+        setLastSavedAt(new Date());
       } catch {
         setSyncStatus("error");
       }
     }, 700);
 
     return () => window.clearTimeout(timer);
-  }, [stops, legs, scheduleItems, checklist, notes, cnyPerEuro, costEntries, hydrated, cloudReady]);
+  }, [stops, legs, scheduleItems, checklist, notes, cnyPerEuro, costEntries, customCategories, coverPhoto, hydrated, cloudReady]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const logQuery = query(collection(db, "travel-plans", "china-2026", "change-log"), orderBy("createdAt", "desc"), limit(80));
+    return onSnapshot(logQuery, (snapshot) => {
+      setChangeLog(snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() } as ChangeLogEntry)));
+    }, () => setChangeLog([]));
+  }, [hydrated]);
 
   const timeline = useMemo(() => {
     return stops.map((stop, index) => {
@@ -598,7 +715,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
   const usedNights = stops.reduce((sum, stop) => sum + stop.nights, 0);
   const remainingNights = TRIP_NIGHTS - usedNights;
   const plannedActivities = scheduleItems.map((item) => ({ ...item, city: stops.find((stop) => stop.id === item.stopId)?.name || "Tappa" }));
-  const budgetedActivities = plannedActivities.filter((item) => item.category === "visita" || item.category === "tempo-libero");
+  const budgetedActivities = plannedActivities.filter((item) => item.price > 0);
   const activitiesCost = budgetedActivities.reduce((sum, item) => sum + toEuro(item.price, item.currency), 0);
   const hotelCost = stops.reduce((sum, stop) => sum + stop.nights * stop.hotelNightly, 0);
   const transportCost = normalizedLegs.filter((leg) => leg.included).reduce((sum, leg) => sum + toEuro(leg.cost, leg.currency), 0);
@@ -639,6 +756,54 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
   const plannedDayCount = calendarDays.filter((day) => scheduleItems.some((item) => item.date === day.dateKey)).length;
   const dayCost = selectedDayItems.reduce((sum, item) => sum + toEuro(item.price, item.currency), 0);
   const bookingCount = scheduleItems.filter((item) => item.bookingStatus === "da-prenotare").length;
+  const categoryOptions = useMemo(() => [
+    ...BUILT_IN_CATEGORIES,
+    ...customCategories.map((category) => ({ value: category, label: category })),
+  ], [customCategories]);
+
+  function recordChange(action: string, detail: string) {
+    const email = currentUser.email?.toLowerCase() || "";
+    const authorName = email === "sofiakovaleva1998@gmail.com" ? "Sofia" : email === "bebroggi@gmail.com" ? "Alberto" : currentUser.displayName || email;
+    void addDoc(collection(db, "travel-plans", "china-2026", "change-log"), {
+      authorEmail: email,
+      authorName,
+      action,
+      detail,
+      createdAt: serverTimestamp(),
+    }).catch(() => undefined);
+  }
+
+  function logScheduleField(item: ScheduleItem, field: string, value: string) {
+    recordChange("Modifica agenda", `${item.name}: ${field} ${value}`);
+  }
+
+  async function changeCoverPhoto(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setPhotoError("");
+    try {
+      const compressed = await compressCoverPhoto(file);
+      setCoverPhoto(compressed);
+      recordChange("Copertina aggiornata", "Ha caricato una nuova foto di viaggio");
+    } catch (error) {
+      setPhotoError(error instanceof Error ? error.message : "Non riesco a preparare questa foto.");
+    }
+  }
+
+  function removeCoverPhoto() {
+    setCoverPhoto("");
+    recordChange("Copertina rimossa", "Ha rimosso la foto di viaggio");
+  }
+
+  function addCustomCategory() {
+    const category = newCategory.trim();
+    if (!category || categoryOptions.some((item) => item.value.toLocaleLowerCase("it") === category.toLocaleLowerCase("it"))) return;
+    setCustomCategories((current) => [...current, category]);
+    setNewScheduleItem((current) => ({ ...current, category }));
+    setNewCategory("");
+    recordChange("Categoria aggiunta", category);
+  }
 
   function updateStop(id: string, patch: Partial<Stop>) {
     setStops((current) => current.map((stop) => (stop.id === id ? { ...stop, ...patch } : stop)));
@@ -646,8 +811,10 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
 
   function removeStop(id: string) {
     if (id === "beijing" || id === "shanghai") return;
+    const removed = stops.find((stop) => stop.id === id);
     setStops((current) => current.filter((stop) => stop.id !== id));
     if (selectedStopId === id) setSelectedStopId("beijing");
+    if (removed) recordChange("Tappa eliminata", removed.name);
   }
 
   function moveStop(id: string, direction: -1 | 1) {
@@ -669,6 +836,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     setStops((current) => [...current.slice(0, -1), stop, current[current.length - 1]]);
     setSelectedStopId(stop.id);
     setNewStopName("");
+    recordChange("Tappa aggiunta", stop.name);
   }
 
   function updateLeg(id: string, patch: Partial<Leg>) {
@@ -686,7 +854,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
   function addScheduleItem(event: FormEvent) {
     event.preventDefault();
     if (!selectedDay || !newScheduleItem.name.trim()) return;
-    setScheduleItems((current) => [...current, {
+    const item: ScheduleItem = {
       id: uid("plan"),
       date: selectedDay.dateKey,
       stopId: selectedDay.stopId,
@@ -696,8 +864,10 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
       notes: newScheduleItem.notes.trim(),
       price: Number(newScheduleItem.price) || 0,
       currency: newScheduleItem.currency,
-    }]);
-    setNewScheduleItem((current) => ({ ...current, name: "", location: "", notes: "", price: 0 }));
+    };
+    setScheduleItems((current) => [...current, item]);
+    setNewScheduleItem((current) => ({ ...current, name: "", fromLocation: "", location: "", transportMode: "", mapUrl: "", notes: "", price: 0 }));
+    recordChange(`${KIND_LABELS[item.kind || "activity"]} aggiunto`, `${item.name} · ${item.date} ${item.startTime}–${item.endTime}`);
   }
 
   function updateScheduleItem(id: string, patch: Partial<ScheduleItem>) {
@@ -705,7 +875,9 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
   }
 
   function removeScheduleItem(id: string) {
+    const removed = scheduleItems.find((item) => item.id === id);
     setScheduleItems((current) => current.filter((item) => item.id !== id));
+    if (removed) recordChange(`${KIND_LABELS[scheduleKind(removed)]} eliminato`, `${removed.name} · ${removed.date}`);
   }
 
   function scheduleActivity(stop: Stop, activity: Activity) {
@@ -726,6 +898,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
       startTime,
       endTime,
       name: activity.name,
+      kind: "activity",
       category: "visita",
       location: stop.name,
       notes: activity.description,
@@ -741,6 +914,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     }));
     setSelectedDate(targetDay.dateKey);
     setSection("calendar");
+    recordChange("Attività aggiunta", `${activity.name} · ${targetDay.dateKey}`);
   }
 
   function addCostEntry(event: FormEvent) {
@@ -753,6 +927,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
       currency: newCost.currency,
     }]);
     setNewCost((current) => ({ ...current, label: "", amount: 0 }));
+    recordChange("Costo aggiunto", `${newCost.label.trim()} · ${formatCost(newCost.amount, newCost.currency)}`);
   }
 
   function updateCostEntry(id: string, patch: Partial<CostEntry>) {
@@ -760,7 +935,24 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
   }
 
   function removeCostEntry(id: string) {
+    const removed = costEntries.find((entry) => entry.id === id);
     setCostEntries((current) => current.filter((entry) => entry.id !== id));
+    if (removed) recordChange("Costo eliminato", `${removed.label} · ${formatCost(removed.amount, removed.currency)}`);
+  }
+
+  function prepareNewTransport() {
+    setNewScheduleItem((current) => ({
+      ...current,
+      kind: "transport",
+      category: "trasferimento",
+      name: "",
+      fromLocation: "",
+      location: "",
+      transportMode: "",
+      notes: "",
+    }));
+    setSection("calendar");
+    window.setTimeout(() => document.getElementById("new-plan")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
   }
 
   const navItems = [
@@ -769,6 +961,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     ["transport", "Trasporti"],
     ["budget", "Budget"],
     ["planner", "Checklist & note"],
+    ["history", "Modifiche"],
   ];
   const syncLabel = {
     loading: "Collegamento al database…",
@@ -779,7 +972,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
 
   return (
     <main className="shell">
-      <header className="hero">
+      <header className={`hero ${coverPhoto ? "has-photo" : ""}`} style={coverPhoto ? { backgroundImage: `linear-gradient(90deg, rgba(6,27,20,.94), rgba(6,27,20,.52) 52%, rgba(6,27,20,.08)), url("${coverPhoto}")` } : undefined}>
         <div>
           <p className="eyebrow">Alberto & Sofia · Cina 2026</p>
           <h1>Ogni giorno.<br />Ogni ora. Tutto qui.</h1>
@@ -789,6 +982,11 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
           <span>Piano operativo</span>
           <strong>{plannedDayCount} / {calendarDays.length} giorni</strong>
           <small>{scheduleItems.length} blocchi orari · {bookingCount} da prenotare</small>
+          <div className="cover-actions">
+            <label>📷 {coverPhoto ? "Cambia foto" : "Aggiungi la vostra foto"}<input type="file" accept="image/*" onChange={changeCoverPhoto} /></label>
+            {coverPhoto && <button onClick={removeCoverPhoto}>Rimuovi</button>}
+          </div>
+          {photoError && <p className="photo-error">{photoError}</p>}
         </div>
       </header>
 
@@ -803,7 +1001,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
       </nav>
       <div className={`sync-bar ${syncStatus}`}>
         <span><i />{syncLabel}</span>
-        <small>{currentUser.email}</small>
+        <small>{lastSavedAt ? `Ultimo autosalvataggio ${lastSavedAt.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} · ` : ""}{currentUser.email}</small>
         <button onClick={() => signOut(auth)}>Esci</button>
       </div>
 
@@ -813,6 +1011,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
             <article className="card map-card">
               <div className="card-head"><div><p className="eyebrow">Mappa viva</p><h2>La rotta</h2></div><span className="subtle">Seleziona una città</span></div>
               <InteractiveRouteMap stops={stops} legs={normalizedLegs} onSelect={setSelectedStopId} />
+              <div className="china-map-note"><div><b>Per muoversi davvero in Cina</b><span>Questa è una panoramica. Per ricerca e navigazione apriamo Amap (Gaode), pensata per la Cina continentale.</span></div><a href={amapSearchUrl(selectedStop.name)} target="_blank" rel="noreferrer">Apri {selectedStop.name} in Amap ↗</a></div>
             </article>
 
             <article className="card">
@@ -899,44 +1098,65 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
 
             <div className="time-plan">
               {selectedDayItems.length === 0 && <div className="empty-day"><span>+</span><b>Questa giornata è ancora libera</b><p>Aggiungi il primo blocco con il modulo qui sotto.</p></div>}
-              {selectedDayItems.map((item) => <article className={`schedule-item category-${item.category} ${conflictingIds.has(item.id) ? "conflict" : ""}`} key={item.id}>
+              {selectedDayItems.map((item) => {
+                const kind = scheduleKind(item);
+                const itemMapLink = mapLinkFor(item, selectedDay?.city || "");
+                return <article className={`schedule-item kind-${kind} ${conflictingIds.has(item.id) ? "conflict" : ""}`} key={item.id}>
                 <div className="schedule-time">
-                  <label>Inizio<input type="time" value={item.startTime} onChange={(event) => updateScheduleItem(item.id, { startTime: event.target.value })} /></label>
+                  <label>Inizio<input type="time" step="300" value={item.startTime} onChange={(event) => updateScheduleItem(item.id, { startTime: event.target.value })} onBlur={(event) => logScheduleField(item, "inizio", event.target.value)} /></label>
                   <span>↓</span>
-                  <label>Fine<input type="time" value={item.endTime} onChange={(event) => updateScheduleItem(item.id, { endTime: event.target.value })} /></label>
+                  <label>Fine<input type="time" step="300" value={item.endTime} onChange={(event) => updateScheduleItem(item.id, { endTime: event.target.value })} onBlur={(event) => logScheduleField(item, "fine", event.target.value)} /></label>
                 </div>
                 <div className="schedule-content">
+                  <div className="kind-badge"><span>{kind === "activity" ? "◎" : kind === "transport" ? "→" : "⌂"}</span>{KIND_LABELS[kind]}</div>
                   <div className="schedule-topline">
-                    <input className="schedule-name" aria-label="Nome attività" value={item.name} onChange={(event) => updateScheduleItem(item.id, { name: event.target.value })} />
-                    <select aria-label="Categoria" value={item.category} onChange={(event) => updateScheduleItem(item.id, { category: event.target.value as ScheduleItem["category"] })}>
-                      <option value="visita">Visita</option><option value="trasporto">Trasporto</option><option value="cibo">Cibo</option><option value="tempo-libero">Tempo libero</option><option value="hotel">Hotel</option>
+                    <input className="schedule-name" aria-label="Nome attività" value={item.name} onChange={(event) => updateScheduleItem(item.id, { name: event.target.value })} onBlur={(event) => logScheduleField(item, "titolo aggiornato in", event.target.value)} />
+                    <select aria-label="Tipo di blocco" value={kind} onChange={(event) => {
+                      const nextKind = event.target.value as ScheduleKind;
+                      updateScheduleItem(item.id, { kind: nextKind, category: nextKind === "transport" ? "trasferimento" : nextKind === "hotel" ? "pernottamento" : "visita" });
+                      recordChange("Tipo modificato", `${item.name}: ${KIND_LABELS[nextKind]}`);
+                    }}>
+                      <option value="activity">Attività</option><option value="transport">Trasporto</option><option value="hotel">Hotel / notte</option>
                     </select>
                   </div>
-                  <input className="schedule-location" aria-label="Luogo" value={item.location} placeholder="Luogo, indirizzo o stazione" onChange={(event) => updateScheduleItem(item.id, { location: event.target.value })} />
-                  <textarea aria-label="Note attività" value={item.notes} placeholder="Biglietti, cosa portare, note pratiche…" onChange={(event) => updateScheduleItem(item.id, { notes: event.target.value })} />
+                  <div className="schedule-specifics">
+                    {kind === "activity" && <label>Categoria<select aria-label="Categoria" value={item.category} onChange={(event) => { updateScheduleItem(item.id, { category: event.target.value }); recordChange("Categoria modificata", `${item.name}: ${event.target.options[event.target.selectedIndex].text}`); }}>{categoryOptions.map((category) => <option value={category.value} key={category.value}>{category.label}</option>)}</select></label>}
+                    {kind === "transport" && <><label>Mezzo<input value={item.transportMode || ""} placeholder="Treno, Didi, metro…" onChange={(event) => updateScheduleItem(item.id, { transportMode: event.target.value })} onBlur={(event) => logScheduleField(item, "mezzo", event.target.value)} /></label><label>Da<input value={item.fromLocation || ""} placeholder="Hotel o punto di partenza" onChange={(event) => updateScheduleItem(item.id, { fromLocation: event.target.value })} onBlur={(event) => logScheduleField(item, "partenza", event.target.value)} /></label></>}
+                    {kind === "hotel" && <span className="sleep-note">Check-in, notte e check-out restano separati dalle attività.</span>}
+                    <label className={kind === "activity" ? "wide" : ""}>{kind === "transport" ? "A / destinazione" : kind === "hotel" ? "Hotel / indirizzo" : "Luogo"}<input value={item.location} placeholder="Nome anche in cinese, indirizzo o stazione" onChange={(event) => updateScheduleItem(item.id, { location: event.target.value })} onBlur={(event) => logScheduleField(item, "luogo", event.target.value)} /></label>
+                  </div>
+                  <textarea aria-label="Note attività" value={item.notes} placeholder="Biglietti, cosa portare, note pratiche…" onChange={(event) => updateScheduleItem(item.id, { notes: event.target.value })} onBlur={() => recordChange("Note aggiornate", item.name)} />
                   <div className="schedule-meta">
-                    <label>Costo per 2 <span className="money-input"><input type="number" min="0" value={item.price} onChange={(event) => updateScheduleItem(item.id, { price: Number(event.target.value) || 0 })} /><select aria-label={`Valuta ${item.name}`} value={item.currency || "EUR"} onChange={(event) => updateScheduleItem(item.id, { currency: event.target.value as Currency })}><option value="EUR">€</option><option value="CNY">¥</option></select></span></label>
-                    <label>Stato <select value={item.bookingStatus} onChange={(event) => updateScheduleItem(item.id, { bookingStatus: event.target.value as ScheduleItem["bookingStatus"] })}><option value="da-prenotare">Da prenotare</option><option value="prenotato">Prenotato</option><option value="non-serve">Nessuna prenotazione</option></select></label>
+                    <label>Costo per 2 <span className="money-input"><input type="number" min="0" step="0.01" value={item.price} onChange={(event) => updateScheduleItem(item.id, { price: Number(event.target.value) || 0 })} onBlur={(event) => logScheduleField(item, "costo", formatCost(Number(event.target.value) || 0, item.currency))} /><select aria-label={`Valuta ${item.name}`} value={item.currency || "EUR"} onChange={(event) => { updateScheduleItem(item.id, { currency: event.target.value as Currency }); recordChange("Valuta modificata", `${item.name}: ${event.target.value}`); }}><option value="EUR">€</option><option value="CNY">¥</option></select></span></label>
+                    <label>Stato <select value={item.bookingStatus} onChange={(event) => { updateScheduleItem(item.id, { bookingStatus: event.target.value as ScheduleItem["bookingStatus"] }); recordChange("Stato modificato", `${item.name}: ${event.target.options[event.target.selectedIndex].text}`); }}><option value="da-prenotare">Da prenotare</option><option value="prenotato">Prenotato</option><option value="non-serve">Nessuna prenotazione</option></select></label>
+                    {itemMapLink && <a className="map-link" href={itemMapLink} target="_blank" rel="noreferrer">Apri in Amap ↗</a>}
                     {item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noreferrer">Fonte ↗</a>}
                     <button className="danger-text" onClick={() => removeScheduleItem(item.id)}>Elimina</button>
                   </div>
                 </div>
-              </article>)}
+              </article>;
+              })}
             </div>
 
-            <form className="card add-plan-card" onSubmit={addScheduleItem}>
-              <div className="card-head"><div><p className="eyebrow">Inserimento rapido</p><h3>Nuova attività</h3></div><span>{selectedDay?.city}</span></div>
+            <form className="card add-plan-card" id="new-plan" onSubmit={addScheduleItem}>
+              <div className="card-head"><div><p className="eyebrow">Nuovo blocco · scegli prima il tipo</p><h3>Nuovo {KIND_LABELS[newScheduleItem.kind].toLocaleLowerCase("it")}</h3></div><span>{selectedDay?.city}</span></div>
+              <div className="kind-picker" role="group" aria-label="Tipo di nuovo blocco">
+                {(["activity", "transport", "hotel"] as ScheduleKind[]).map((kind) => <button type="button" key={kind} className={newScheduleItem.kind === kind ? "active" : ""} onClick={() => setNewScheduleItem((current) => ({ ...current, kind, category: kind === "transport" ? "trasferimento" : kind === "hotel" ? "pernottamento" : "visita" }))}><span>{kind === "activity" ? "◎" : kind === "transport" ? "→" : "⌂"}</span>{KIND_LABELS[kind]}</button>)}
+              </div>
               <div className="add-plan-grid">
-                <label>Inizio<input type="time" value={newScheduleItem.startTime} onChange={(event) => setNewScheduleItem((current) => ({ ...current, startTime: event.target.value }))} /></label>
-                <label>Fine<input type="time" value={newScheduleItem.endTime} onChange={(event) => setNewScheduleItem((current) => ({ ...current, endTime: event.target.value }))} /></label>
-                <label className="wide">Attività<input required value={newScheduleItem.name} placeholder="Es. Tempio del Cielo" onChange={(event) => setNewScheduleItem((current) => ({ ...current, name: event.target.value }))} /></label>
-                <label>Categoria<select value={newScheduleItem.category} onChange={(event) => setNewScheduleItem((current) => ({ ...current, category: event.target.value as ScheduleItem["category"] }))}><option value="visita">Visita</option><option value="trasporto">Trasporto</option><option value="cibo">Cibo</option><option value="tempo-libero">Tempo libero</option><option value="hotel">Hotel</option></select></label>
-                <label className="wide">Luogo<input value={newScheduleItem.location} placeholder="Indirizzo, quartiere o stazione" onChange={(event) => setNewScheduleItem((current) => ({ ...current, location: event.target.value }))} /></label>
-                <label>Costo per 2<span className="money-input"><input type="number" min="0" value={newScheduleItem.price} onChange={(event) => setNewScheduleItem((current) => ({ ...current, price: Number(event.target.value) || 0 }))} /><select aria-label="Valuta nuova attività" value={newScheduleItem.currency} onChange={(event) => setNewScheduleItem((current) => ({ ...current, currency: event.target.value as Currency }))}><option value="EUR">€</option><option value="CNY">¥</option></select></span></label>
+                <label>Inizio<input type="time" step="300" value={newScheduleItem.startTime} onChange={(event) => setNewScheduleItem((current) => ({ ...current, startTime: event.target.value }))} /></label>
+                <label>Fine<input type="time" step="300" value={newScheduleItem.endTime} onChange={(event) => setNewScheduleItem((current) => ({ ...current, endTime: event.target.value }))} /></label>
+                <label className="wide">Titolo<input required value={newScheduleItem.name} placeholder={newScheduleItem.kind === "transport" ? "Es. Hotel → Muraglia di Mutianyu" : newScheduleItem.kind === "hotel" ? "Es. Hotel a Pechino" : "Es. Tempio del Cielo"} onChange={(event) => setNewScheduleItem((current) => ({ ...current, name: event.target.value }))} /></label>
+                {newScheduleItem.kind === "activity" && <label>Categoria<select value={newScheduleItem.category} onChange={(event) => setNewScheduleItem((current) => ({ ...current, category: event.target.value }))}>{categoryOptions.map((category) => <option value={category.value} key={category.value}>{category.label}</option>)}</select></label>}
+                {newScheduleItem.kind === "transport" && <><label>Mezzo<input value={newScheduleItem.transportMode} placeholder="Treno, Didi, metro…" onChange={(event) => setNewScheduleItem((current) => ({ ...current, transportMode: event.target.value }))} /></label><label className="wide">Da<input value={newScheduleItem.fromLocation} placeholder="Hotel o punto di partenza" onChange={(event) => setNewScheduleItem((current) => ({ ...current, fromLocation: event.target.value }))} /></label></>}
+                <label className="wide">{newScheduleItem.kind === "transport" ? "A / destinazione" : newScheduleItem.kind === "hotel" ? "Hotel / indirizzo" : "Luogo"}<input value={newScheduleItem.location} placeholder="Nome, indirizzo o stazione (meglio anche in cinese)" onChange={(event) => setNewScheduleItem((current) => ({ ...current, location: event.target.value }))} /></label>
+                <label>Link mappa (opzionale)<input type="url" value={newScheduleItem.mapUrl} placeholder="Link Amap del luogo" onChange={(event) => setNewScheduleItem((current) => ({ ...current, mapUrl: event.target.value }))} /></label>
+                <label>Costo per 2<span className="money-input"><input type="number" min="0" step="0.01" value={newScheduleItem.price} onChange={(event) => setNewScheduleItem((current) => ({ ...current, price: Number(event.target.value) || 0 }))} /><select aria-label="Valuta nuova attività" value={newScheduleItem.currency} onChange={(event) => setNewScheduleItem((current) => ({ ...current, currency: event.target.value as Currency }))}><option value="EUR">€</option><option value="CNY">¥</option></select></span></label>
                 <label>Stato<select value={newScheduleItem.bookingStatus} onChange={(event) => setNewScheduleItem((current) => ({ ...current, bookingStatus: event.target.value as ScheduleItem["bookingStatus"] }))}><option value="da-prenotare">Da prenotare</option><option value="prenotato">Prenotato</option><option value="non-serve">Nessuna prenotazione</option></select></label>
                 <label className="full">Note<textarea value={newScheduleItem.notes} placeholder="Tempi di trasferimento, biglietti, promemoria…" onChange={(event) => setNewScheduleItem((current) => ({ ...current, notes: event.target.value }))} /></label>
               </div>
-              <button className="primary" type="submit">+ Aggiungi alla giornata</button>
+              {newScheduleItem.kind === "activity" && <div className="category-creator"><span>Non trovi la categoria?</span><input value={newCategory} placeholder="Es. Fotografia" onChange={(event) => setNewCategory(event.target.value)} /><button type="button" onClick={addCustomCategory}>+ Crea categoria</button></div>}
+              <div className="add-plan-footer"><button className="primary" type="submit">+ Aggiungi alla giornata</button><small>Dopo l’aggiunta, ogni modifica viene salvata automaticamente.</small></div>
             </form>
           </div>
 
@@ -944,7 +1164,18 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
       </section>}
 
       {section === "transport" && <section className="panel-section">
-        <div className="section-title"><div><p className="eyebrow">Un collegamento tra ogni tappa</p><h2>Trasporti</h2></div><strong>{euro.format(transportCost)}</strong></div>
+        <div className="section-title transport-title"><div><p className="eyebrow">Tra le città e dentro ogni giornata</p><h2>Trasporti</h2></div><div><strong>{euro.format(transportCost)}</strong><button className="primary" onClick={prepareNewTransport}>+ Aggiungi trasferimento</button></div></div>
+        <article className="card daily-transports">
+          <div className="card-head"><div><p className="eyebrow">Dall’agenda</p><h2>Spostamenti giornalieri</h2></div><span>{scheduleItems.filter((item) => scheduleKind(item) === "transport").length} inseriti</span></div>
+          <div className="daily-transport-list">
+            {scheduleItems.filter((item) => scheduleKind(item) === "transport").sort((a, b) => `${a.date}${a.startTime}`.localeCompare(`${b.date}${b.startTime}`)).map((item) => <button key={item.id} onClick={() => { setSelectedDate(item.date); setSection("calendar"); }}>
+              <span><b>{shortDate.format(new Date(`${item.date}T12:00:00`))}</b><small>{item.startTime}–{item.endTime}</small></span>
+              <span><strong>{item.transportMode || "Trasporto"}</strong>{item.fromLocation || "Partenza da definire"} → {item.location || "Destinazione da definire"}</span>
+              <i>Modifica in agenda →</i>
+            </button>)}
+          </div>
+        </article>
+        <div className="section-title compact"><div><p className="eyebrow">Tratte principali</p><h2>Collegamenti tra le tappe</h2></div></div>
         <div className="transport-list">
           {normalizedLegs.map((leg) => {
             const fromStop = stops.find((stop) => stop.id === leg.fromId);
@@ -957,19 +1188,19 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                 <label>Costo per 2<span className="money-input"><input type="number" min="0" value={leg.cost} onChange={(event) => updateLeg(leg.id, { cost: Number(event.target.value) || 0 })} /><select aria-label={`Valuta ${fromStop?.name} ${toStop?.name}`} value={leg.currency || "EUR"} onChange={(event) => updateLeg(leg.id, { currency: event.target.value as Currency })}><option value="EUR">€</option><option value="CNY">¥</option></select></span></label>
               </div>
               <p>{leg.note}</p>
-              <div className="transport-actions"><button onClick={() => updateLeg(leg.id, { included: !leg.included })}>{leg.included ? "Togli dal viaggio" : "Aggiungi al viaggio"}</button></div>
+              <div className="transport-actions"><button onClick={() => updateLeg(leg.id, { included: !leg.included })}>{leg.included ? "Togli dal viaggio" : "Aggiungi al viaggio"}</button><a href={amapSearchUrl(toStop?.name || "")} target="_blank" rel="noreferrer">Destinazione su Amap ↗</a></div>
             </article>;
           })}
         </div>
       </section>}
 
       {section === "budget" && <section className="panel-section">
-        <div className="budget-hero"><div><p className="eyebrow">Totale dinamico per due</p><strong>{euro.format(totalBudget)}</strong><span>{euro.format(totalBudget / 2)} a persona</span></div><p>Ogni attività selezionata e ogni trasporto incluso entra automaticamente nel totale.</p></div>
+        <div className="budget-hero"><div><p className="eyebrow">Totale dinamico per due</p><strong>{euro.format(totalBudget)}</strong><span>{euro.format(totalBudget / 2)} a persona</span></div><p>Ogni costo inserito nell’agenda e ogni collegamento incluso entra automaticamente nel totale.</p></div>
         <div className="budget-grid">
           <article className="budget-category locked"><span>Voli internazionali</span><b>{euro.format(FLIGHTS_COST)}</b><small>Costo confermato</small></article>
           <article className="budget-category"><span>Hotel</span><b>{euro.format(hotelCost)}</b><small>{usedNights} notti · modifica il prezzo nelle tappe</small></article>
           <article className="budget-category"><span>Trasporti tra tappe</span><b>{euro.format(transportCost)}</b><small>{normalizedLegs.filter((leg) => leg.included).length} collegamenti inclusi</small></article>
-          <article className="budget-category highlight"><span>Attività in agenda</span><b>{euro.format(activitiesCost)}</b><small>{budgetedActivities.length} esperienze pianificate</small></article>
+          <article className="budget-category highlight"><span>Costi in agenda</span><b>{euro.format(activitiesCost)}</b><small>{budgetedActivities.length} blocchi con un costo</small></article>
           <article className="budget-category"><span>Costi aggiunti</span><b>{euro.format(addedCostsTotal)}</b><small>{costEntries.length} voci libere</small></article>
           <article className="budget-category editable"><span>Cambio yuan</span><label>1 € = <input type="number" min="0.01" step="0.01" value={cnyPerEuro} onChange={(event) => setCnyPerEuro(Math.max(0.01, Number(event.target.value) || 8))} /> ¥</label><small>Modificabile quando vuoi</small></article>
         </div>
@@ -978,9 +1209,9 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
             <div className="card-head"><div><p className="eyebrow">Euro o yuan</p><h2>Aggiungi e togli costi</h2></div><b>{euro.format(addedCostsTotal)}</b></div>
             <div className="cost-list">
               {costEntries.map((entry) => <div className="cost-row" key={entry.id}>
-                <input aria-label="Descrizione costo" value={entry.label} onChange={(event) => updateCostEntry(entry.id, { label: event.target.value })} />
-                <input aria-label={`Importo ${entry.label}`} type="number" min="0" value={entry.amount} onChange={(event) => updateCostEntry(entry.id, { amount: Number(event.target.value) || 0 })} />
-                <select aria-label={`Valuta ${entry.label}`} value={entry.currency} onChange={(event) => updateCostEntry(entry.id, { currency: event.target.value as Currency })}><option value="EUR">EUR €</option><option value="CNY">CNY ¥</option></select>
+                <input aria-label="Descrizione costo" value={entry.label} onChange={(event) => updateCostEntry(entry.id, { label: event.target.value })} onBlur={(event) => recordChange("Costo modificato", `Descrizione: ${event.target.value}`)} />
+                <input aria-label={`Importo ${entry.label}`} type="number" min="0" step="0.01" value={entry.amount} onChange={(event) => updateCostEntry(entry.id, { amount: Number(event.target.value) || 0 })} onBlur={(event) => recordChange("Costo modificato", `${entry.label}: ${formatCost(Number(event.target.value) || 0, entry.currency)}`)} />
+                <select aria-label={`Valuta ${entry.label}`} value={entry.currency} onChange={(event) => { updateCostEntry(entry.id, { currency: event.target.value as Currency }); recordChange("Valuta costo modificata", `${entry.label}: ${event.target.value}`); }}><option value="EUR">EUR €</option><option value="CNY">CNY ¥</option></select>
                 <strong>{entry.currency === "CNY" ? `≈ ${euro.format(toEuro(entry.amount, entry.currency))}` : formatCost(entry.amount, entry.currency)}</strong>
                 <button className="danger-text" onClick={() => removeCostEntry(entry.id)}>Togli</button>
               </div>)}
@@ -992,15 +1223,28 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
               <button className="primary" type="submit">+ Aggiungi</button>
             </form>
           </article>
-          <article className="card budget-detail"><div className="card-head"><div><p className="eyebrow">Dall’agenda</p><h2>Attività nel budget</h2></div><b>{euro.format(activitiesCost)}</b></div><div>{budgetedActivities.length === 0 ? <p className="empty padded">Aggiungi attività all’agenda per includerle nel budget.</p> : budgetedActivities.map((activity) => <div className="budget-row" key={`${activity.city}-${activity.id}`}><span>{activity.city}<small>{activity.date} · {activity.startTime}</small></span><div><b>{activity.name}</b><small>{activity.notes}</small></div><strong>{formatCost(activity.price, activity.currency)}</strong></div>)}</div></article>
+          <article className="card budget-detail"><div className="card-head"><div><p className="eyebrow">Dall’agenda</p><h2>Blocchi nel budget</h2></div><b>{euro.format(activitiesCost)}</b></div><div>{budgetedActivities.length === 0 ? <p className="empty padded">Aggiungi un costo a un blocco dell’agenda per includerlo nel budget.</p> : budgetedActivities.map((activity) => <div className="budget-row" key={`${activity.city}-${activity.id}`}><span>{activity.city}<small>{activity.date} · {activity.startTime}</small></span><div><b>{activity.name}</b><small>{activity.notes}</small></div><strong>{formatCost(activity.price, activity.currency)}</strong></div>)}</div></article>
         </div>
       </section>}
 
       {section === "planner" && <section className="planner-grid simple">
         <div className="stack">
-          <article className="card"><div className="card-head"><div><p className="eyebrow">Preparazione</p><h2>Checklist</h2></div><span>{checklist.filter(Boolean).length} / {checklist.length}</span></div><div className="checklist">{defaultChecklist.map((item, index) => <label key={item}><input type="checkbox" checked={Boolean(checklist[index])} onChange={() => setChecklist((current) => current.map((value, itemIndex) => itemIndex === index ? !value : value))} /><span>{item}</span></label>)}</div></article>
-          <article className="card notes-card"><div className="card-head"><div><p className="eyebrow">Salvate nel database condiviso</p><h2>Note condivise</h2></div></div><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Hotel preferiti, ristoranti, idee e cose da ricordare…" /></article>
+          <article className="card"><div className="card-head"><div><p className="eyebrow">Preparazione</p><h2>Checklist</h2></div><span>{checklist.filter(Boolean).length} / {checklist.length}</span></div><div className="checklist">{defaultChecklist.map((item, index) => <label key={item}><input type="checkbox" checked={Boolean(checklist[index])} onChange={() => { const done = !Boolean(checklist[index]); setChecklist((current) => current.map((value, itemIndex) => itemIndex === index ? !value : value)); recordChange(done ? "Checklist completata" : "Checklist riaperta", item); }} /><span>{item}</span></label>)}</div></article>
+          <article className="card notes-card"><div className="card-head"><div><p className="eyebrow">Salvate nel database condiviso</p><h2>Note condivise</h2></div></div><textarea value={notes} onChange={(event) => setNotes(event.target.value)} onBlur={() => recordChange("Note condivise aggiornate", "Ha modificato le note generali del viaggio")} placeholder="Hotel preferiti, ristoranti, idee e cose da ricordare…" /></article>
         </div>
+      </section>}
+
+      {section === "history" && <section className="history-section">
+        <div className="section-title"><div><p className="eyebrow">Registro condiviso</p><h2>Chi ha modificato cosa</h2></div><span>Ultime {changeLog.length} modifiche</span></div>
+        <article className="card history-card">
+          {changeLog.length === 0 ? <div className="history-empty"><span>↻</span><b>Il registro parte da questo aggiornamento</b><p>Le nuove aggiunte, cancellazioni e modifiche importanti appariranno qui con autore e ora.</p></div> : <div className="history-list">
+            {changeLog.map((entry) => <div className="history-row" key={entry.id}>
+              <span className={`history-avatar ${entry.authorName === "Sofia" ? "sofia" : ""}`}>{entry.authorName?.charAt(0) || "?"}</span>
+              <div><b>{entry.authorName || entry.authorEmail}</b><strong>{entry.action}</strong><p>{entry.detail}</p></div>
+              <time>{entry.createdAt?.toDate ? entry.createdAt.toDate().toLocaleString("it-IT", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "adesso"}</time>
+            </div>)}
+          </div>}
+        </article>
       </section>}
     </main>
   );

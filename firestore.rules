@@ -13,6 +13,11 @@ service cloud.firestore {
 
     match /travel-plans/china-2026 {
       allow read, write: if isPlannerMember();
+
+      match /change-log/{entryId} {
+        allow read, create: if isPlannerMember();
+        allow update, delete: if false;
+      }
     }
 
     match /{document=**} {
