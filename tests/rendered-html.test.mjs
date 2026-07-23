@@ -130,7 +130,7 @@ test("include la nuova copertina fotografica", async () => {
 test("ripristina una sola volta l’itinerario completo nei piani già salvati", async () => {
   const planner = await source("app/ChinaPlanner.tsx");
 
-  assert.match(planner, /ITINERARY_SCHEMA_VERSION = 1/);
+  assert.match(planner, /ITINERARY_SCHEMA_VERSION = 2/);
   assert.match(planner, /mergeStopsWithDefaults/);
   assert.match(planner, /mergeById\(initialSchedule\.map\(normalizeScheduleItem\), normalizedSchedule\)/);
   assert.match(planner, /action: "Itinerario ripristinato"/);
