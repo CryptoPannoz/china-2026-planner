@@ -94,14 +94,6 @@ type Leg = {
   note: string;
 };
 
-type ItineraryVariant = {
-  id: string;
-  name: string;
-  savedAt: string;
-  stops: Stop[];
-  legs: Leg[];
-};
-
 type CostEntry = {
   id: string;
   label: string;
@@ -125,8 +117,6 @@ type Expense = {
 
 type PlanData = {
   itineraryVersion: number;
-  activePlanName: string;
-  variants: ItineraryVariant[];
   stops: Stop[];
   legs: Leg[];
   scheduleItems: ScheduleItem[];
@@ -581,14 +571,8 @@ function normalizePlanData(value: unknown): PlanData | null {
     ? mergeById(makeDefaultHotelStays(stops), savedHotels)
     : savedHotels;
 
-  const variants = Array.isArray(data.variants)
-    ? (data.variants as ItineraryVariant[]).filter((variant) => variant && typeof variant.id === "string" && typeof variant.name === "string" && Array.isArray(variant.stops) && Array.isArray(variant.legs))
-    : [];
-
   return {
     itineraryVersion: ITINERARY_SCHEMA_VERSION,
-    activePlanName: typeof data.activePlanName === "string" && data.activePlanName.trim() ? data.activePlanName : "Piano principale",
-    variants,
     stops,
     legs,
     scheduleItems,
@@ -670,20 +654,20 @@ function scheduleKind(item: ScheduleItem): ScheduleKind {
   return item.kind || inferScheduleKind(item.category);
 }
 
-function amapSearchUrl(place: string, city = "") {
+function googleMapsSearchUrl(place: string, city = "") {
   const queryText = [place, city].filter(Boolean).join(" ");
-  return `https://uri.amap.com/search?keyword=${encodeURIComponent(queryText)}&src=china2026planner&callnative=1`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(queryText)}`;
 }
 
-function amapStopUrl(stop: Pick<Stop, "lat" | "lng" | "name">) {
-  return `https://uri.amap.com/marker?position=${stop.lng},${stop.lat}&name=${encodeURIComponent(stop.name)}&coordinate=wgs84&src=china2026planner&callnative=1`;
+function googleMapsStopUrl(stop: Pick<Stop, "lat" | "lng" | "name">) {
+  return `https://www.google.com/maps/search/?api=1&query=${stop.lat}%2C${stop.lng}`;
 }
 
 function mapLinkFor(item: ScheduleItem, city: string) {
   const customLink = safeExternalLink(item.mapUrl);
   if (customLink) return customLink;
   const place = item.location.split("→").at(-1)?.trim() || item.location.trim();
-  return place ? amapSearchUrl(place, city) : "";
+  return place ? googleMapsSearchUrl(place, city) : "";
 }
 
 function webSearchUrl(queryText: string) {
@@ -782,10 +766,12 @@ function loadLeaflet() {
 function InteractiveRouteMap({
   stops,
   legs,
+  suggestions,
   onSelect,
 }: {
   stops: Stop[];
   legs: Leg[];
+  suggestions: SuggestedStop[];
   onSelect: Dispatch<SetStateAction<string>>;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -844,7 +830,27 @@ function InteractiveRouteMap({
         }).addTo(createdMap as LeafletMap).bindTooltip(`${from.name} → ${to.name} · ${leg.mode}`);
       });
 
-      createdMap.fitBounds(stops.map((stop) => [stop.lat, stop.lng] as [number, number]), {
+      suggestions.forEach((suggestion) => {
+        leaflet.marker([suggestion.lat, suggestion.lng], {
+          icon: leaflet.divIcon({
+            className: "route-pin-wrap",
+            html: `<span class="route-pin suggested">?</span>`,
+            iconSize: [28, 28],
+            iconAnchor: [14, 14],
+          }),
+          title: `${suggestion.name} (da valutare)`,
+          alt: `${suggestion.name} (da valutare)`,
+        })
+          .addTo(createdMap as LeafletMap)
+          .bindTooltip(suggestion.name, { direction: "top", offset: [0, -15], className: "route-tooltip" })
+          .bindPopup(`<div class="route-popup"><b>${escapeMapText(suggestion.name)}</b><span>Città da valutare · ${suggestion.nights} ${suggestion.nights === 1 ? "notte" : "notti"}</span><small>${escapeMapText(suggestion.transport)}</small></div>`);
+      });
+
+      const fitPoints = [
+        ...stops.map((stop) => [stop.lat, stop.lng] as [number, number]),
+        ...suggestions.map((suggestion) => [suggestion.lat, suggestion.lng] as [number, number]),
+      ];
+      createdMap.fitBounds(fitPoints, {
         padding: containerRef.current.clientWidth < 640 ? [18, 18] : [38, 38],
       });
       requestAnimationFrame(() => createdMap?.invalidateSize());
@@ -860,7 +866,7 @@ function InteractiveRouteMap({
       if (mapRef.current === createdMap) mapRef.current = null;
       markersRef.current = {};
     };
-  }, [stops, legs, onSelect]);
+  }, [stops, legs, suggestions, onSelect]);
 
   return (
     <div className="real-map-shell">
@@ -868,7 +874,7 @@ function InteractiveRouteMap({
       {!mapReady && !mapError && <div className="map-loading">Caricamento mappa geografica…</div>}
       {mapError && <div className="map-error">{mapError}</div>}
       {mapReady && <div className="map-tools"><button onClick={() => mapRef.current?.fitBounds(stops.map((stop) => [stop.lat, stop.lng] as [number, number]), { padding: [30, 30] })}>Rotta completa</button><button onClick={() => mapRef.current?.setView([31.1, 120.7], 8)}>Zoom Wuzhen–Shanghai</button></div>}
-      <div className="map-legend"><span><i /> Tappa</span><span><i className="route" /> Trasporto incluso</span><span><i className="route off" /> Escluso</span></div>
+      <div className="map-legend"><span><i /> Tappa</span><span><i className="suggested" /> Da valutare</span><span><i className="route" /> Trasporto incluso</span><span><i className="route off" /> Escluso</span></div>
     </div>
   );
 }
@@ -937,9 +943,6 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
   const [section, setSection] = useState("itinerary");
   const [stops, setStops] = useState<Stop[]>(initialStops);
   const [legs, setLegs] = useState<Leg[]>(initialLegs);
-  const [activePlanName, setActivePlanName] = useState("Piano principale");
-  const [variants, setVariants] = useState<ItineraryVariant[]>([]);
-  const [newVariantName, setNewVariantName] = useState("");
   const [nightsNotice, setNightsNotice] = useState("");
   const nightsNoticeTimer = useRef<number | null>(null);
   const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>(initialSchedule);
@@ -1006,8 +1009,6 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
         if (saved) {
           setStops(saved.stops);
           setLegs(saved.legs);
-          setActivePlanName(saved.activePlanName);
-          setVariants(saved.variants);
           setScheduleItems(saved.scheduleItems);
           setHotelStays(saved.hotelStays);
           setChecklist(saved.checklist);
@@ -1044,8 +1045,6 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
         lastCloudValueRef.current = serialized;
         setStops(remotePlan.stops);
         setLegs(remotePlan.legs);
-        setActivePlanName(remotePlan.activePlanName);
-        setVariants(remotePlan.variants);
         setScheduleItems(remotePlan.scheduleItems);
         setHotelStays(remotePlan.hotelStays);
         setChecklist(remotePlan.checklist);
@@ -1081,8 +1080,6 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
 
       let seedPlan: PlanData = {
         itineraryVersion: ITINERARY_SCHEMA_VERSION,
-        activePlanName: "Piano principale",
-        variants: [],
         stops: initialStops,
         legs: initialLegs,
         scheduleItems: initialSchedule,
@@ -1126,8 +1123,6 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     if (!hydrated) return;
     const planData: PlanData = {
       itineraryVersion: ITINERARY_SCHEMA_VERSION,
-      activePlanName,
-      variants,
       stops,
       legs,
       scheduleItems,
@@ -1159,7 +1154,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     }, 700);
 
     return () => window.clearTimeout(timer);
-  }, [stops, legs, activePlanName, variants, scheduleItems, hotelStays, checklist, notes, cnyPerEuro, costEntries, expenses, customCategories, dismissedSuggestions, coverPhoto, hydrated, cloudReady]);
+  }, [stops, legs, scheduleItems, hotelStays, checklist, notes, cnyPerEuro, costEntries, expenses, customCategories, dismissedSuggestions, coverPhoto, hydrated, cloudReady]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -1334,45 +1329,6 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
       showNightsNotice(`Le date dei voli sono fisse (17 nov → 4 dic): ${stop.name} può avere al massimo ${maxAllowed} ${maxAllowed === 1 ? "notte" : "notti"}. Per aumentarle, libera prima una notte da un'altra tappa.`);
     }
     if (nights !== stop.nights) updateStop(id, { nights });
-  }
-
-  function saveCurrentAsVariant(event: FormEvent) {
-    event.preventDefault();
-    const name = newVariantName.trim() || `Variante ${variants.length + 1}`;
-    const variant: ItineraryVariant = {
-      id: uid("piano"),
-      name,
-      savedAt: new Date().toISOString(),
-      stops: structuredClone(stops),
-      legs: structuredClone(legs),
-    };
-    setVariants((current) => [...current, variant]);
-    setNewVariantName("");
-    recordChange("Itinerario alternativo salvato", `${name} · ${stops.length} tappe, ${usedNights} notti`);
-  }
-
-  function activateVariant(id: string) {
-    const variant = variants.find((item) => item.id === id);
-    if (!variant) return;
-    const backup: ItineraryVariant = {
-      id: variant.id,
-      name: activePlanName,
-      savedAt: new Date().toISOString(),
-      stops: structuredClone(stops),
-      legs: structuredClone(legs),
-    };
-    setVariants((current) => current.map((item) => item.id === id ? backup : item));
-    setStops(structuredClone(variant.stops));
-    setLegs(structuredClone(variant.legs));
-    setActivePlanName(variant.name);
-    if (!variant.stops.some((stop) => stop.id === selectedStopId)) setSelectedStopId(variant.stops[0]?.id || "beijing");
-    recordChange("Itinerario alternativo attivato", `Ora è attivo "${variant.name}"; "${backup.name}" resta salvato tra le varianti.`);
-  }
-
-  function removeVariant(id: string) {
-    const removed = variants.find((item) => item.id === id);
-    setVariants((current) => current.filter((item) => item.id !== id));
-    if (removed) recordChange("Itinerario alternativo eliminato", removed.name);
   }
 
   function updateHotelStay(id: string, patch: Partial<HotelStay>) {
@@ -1730,11 +1686,11 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
         <section className="section-grid">
           <div className="stack">
             <article className="card map-card">
-              <div className="card-head"><div><p className="eyebrow">Panoramica itinerario · OpenStreetMap</p><h2>La rotta completa, tappa per tappa</h2></div><span className="subtle">Clicca i punti numerati per selezionare una città</span></div>
-              <InteractiveRouteMap stops={stops} legs={normalizedLegs} onSelect={setSelectedStopId} />
+              <div className="card-head"><div><p className="eyebrow">Panoramica itinerario · OpenStreetMap</p><h2>La rotta completa, tappa per tappa</h2></div><span className="subtle">Punti numerati = tappe del piano · «?» = città da valutare</span></div>
+              <InteractiveRouteMap stops={stops} legs={normalizedLegs} suggestions={visibleSuggestions} onSelect={setSelectedStopId} />
               <div className="china-map-note">
-                <div><b>Amap resta la mappa pratica per quando sarete in Cina</b><span>Ogni hotel, attività e trasporto ha il proprio collegamento; qui puoi aprire anche la città selezionata.</span></div>
-                <a href={amapStopUrl(selectedStop)} target="_blank" rel="noreferrer">Apri {selectedStop.name} in Amap ↗</a>
+                <div><b>Ogni luogo si apre in Google Maps</b><span>Hotel, attività e trasporti hanno il proprio collegamento; qui puoi aprire anche la città selezionata.</span></div>
+                <a href={googleMapsStopUrl(selectedStop)} target="_blank" rel="noreferrer">Apri {selectedStop.name} in Google Maps ↗</a>
               </div>
             </article>
 
@@ -1766,35 +1722,6 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
               </div>
             </article>
 
-            <article className="card variants-card">
-              <div className="card-head">
-                <div><p className="eyebrow">Piani a confronto · stesse date, città diverse</p><h2>Itinerari alternativi</h2></div>
-                <label className="active-plan"><span>Piano attivo</span><input value={activePlanName} aria-label="Nome del piano attivo" onChange={(event) => setActivePlanName(event.target.value)} onBlur={(event) => recordChange("Piano rinominato", event.target.value || "Piano principale")} /></label>
-              </div>
-              <div className="variant-list">
-                {variants.length === 0 && <p className="empty">Nessuna variante salvata. Salva il piano attuale, poi cambia liberamente città e notti: potrai sempre tornare indietro o confrontare le versioni.</p>}
-                {variants.map((variant) => {
-                  const variantNights = variant.stops.reduce((sum, stop) => sum + stop.nights, 0);
-                  return <div className="variant-row" key={variant.id}>
-                    <div className="variant-main">
-                      <b>{variant.name}</b>
-                      <small>{variant.stops.map((stop) => stop.name.split(" · ")[0]).join(" → ")}</small>
-                      <small>{variant.stops.length} tappe · {variantNights} {variantNights === 1 ? "notte" : "notti"}</small>
-                    </div>
-                    <div className="variant-actions">
-                      <button className="primary" onClick={() => activateVariant(variant.id)}>Usa questo piano</button>
-                      <button className="danger-text" onClick={() => removeVariant(variant.id)}>Elimina</button>
-                    </div>
-                  </div>;
-                })}
-              </div>
-              <form className="add-variant" onSubmit={saveCurrentAsVariant}>
-                <input value={newVariantName} placeholder={`Salva "${activePlanName}" come… (es. Piano B con Guilin)`} onChange={(event) => setNewVariantName(event.target.value)} />
-                <button type="submit">+ Salva variante</button>
-              </form>
-              <small className="variant-hint">Quando attivi una variante, il piano attuale prende il suo posto nell&apos;elenco: non perdi mai niente. Agenda, hotel e spese restano invariati.</small>
-            </article>
-
             <article className="card suggestions-card">
               <div className="card-head"><div><p className="eyebrow">Varianti possibili · dalla tappa 3 in poi</p><h2>Città da valutare</h2></div><span className="subtle">Aggiungi o scarta: il piano si costruisce man mano</span></div>
               <div className="suggestion-list">
@@ -1805,7 +1732,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                     <p>{suggestion.recap}</p>
                     <small>🚄 {suggestion.transport}</small>
                     <small>❄️ {suggestion.season}</small>
-                    <span className="activity-links"><a href={webSearchUrl(`${suggestion.name} Cina cosa vedere`)} target="_blank" rel="noreferrer">Cerca sul web ↗</a><a href={amapStopUrl(suggestion)} target="_blank" rel="noreferrer">Amap ↗</a></span>
+                    <span className="activity-links"><a href={webSearchUrl(`${suggestion.name} Cina cosa vedere`)} target="_blank" rel="noreferrer">Cerca sul web ↗</a><a href={googleMapsStopUrl(suggestion)} target="_blank" rel="noreferrer">Google Maps ↗</a></span>
                   </div>
                   <div className="suggestion-actions">
                     <button className="primary" onClick={() => addSuggestedStop(suggestion)}>+ Aggiungi al piano</button>
@@ -1842,7 +1769,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                 {selectedStop.activities.length === 0 && <p className="empty">Nessuna attività clou salvata: aggiungila qui sotto o cerca idee sul web.</p>}
                 {selectedStop.activities.map((activity) => <div className={`activity-row ${scheduleItems.some((item) => item.sourceActivityId === activity.id) ? "selected" : ""}`} key={activity.id}>
                   <button className="check" title="Metti in agenda nella prima giornata disponibile" onClick={() => scheduleActivity(selectedStop, activity)}>{scheduleItems.some((item) => item.sourceActivityId === activity.id) ? "✓" : "+"}</button>
-                  <div><b>{activity.name}</b>{activity.description && <small>{activity.description}</small>}<span className="activity-links"><a href={webSearchUrl(`${activity.name} ${selectedStop.name} biglietti orari`)} target="_blank" rel="noreferrer">Cerca sul web ↗</a><a href={amapSearchUrl(activity.name, selectedStop.name)} target="_blank" rel="noreferrer">Amap ↗</a>{activity.sourceUrl && <a href={activity.sourceUrl} target="_blank" rel="noreferrer">Fonte ↗</a>}</span></div>
+                  <div><b>{activity.name}</b>{activity.description && <small>{activity.description}</small>}<span className="activity-links"><a href={webSearchUrl(`${activity.name} ${selectedStop.name} biglietti orari`)} target="_blank" rel="noreferrer">Cerca sul web ↗</a><a href={googleMapsSearchUrl(activity.name, selectedStop.name)} target="_blank" rel="noreferrer">Google Maps ↗</a>{activity.sourceUrl && <a href={activity.sourceUrl} target="_blank" rel="noreferrer">Fonte ↗</a>}</span></div>
                   <div className="clou-side">
                     <label className="money-input"><input type="number" min="0" value={activity.price} onChange={(event) => updateActivity(selectedStop.id, activity.id, { price: Number(event.target.value) || 0 })} /><select aria-label={`Valuta ${activity.name}`} value={activity.currency || "EUR"} onChange={(event) => updateActivity(selectedStop.id, activity.id, { currency: event.target.value as Currency })}><option value="EUR">€</option><option value="CNY">¥</option></select></label>
                     <button className="danger-text" onClick={() => removeClouActivity(selectedStop.id, activity.id)}>Togli</button>
@@ -1869,7 +1796,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
         <div className="hotel-stay-list">
           {[...hotelStays].sort((a, b) => a.checkInDate.localeCompare(b.checkInDate)).map((stay) => {
             const stop = stops.find((item) => item.id === stay.stopId);
-            const mapUrl = safeExternalLink(stay.mapUrl) || amapSearchUrl(stay.address || stay.name, stop?.name || "");
+            const mapUrl = safeExternalLink(stay.mapUrl) || googleMapsSearchUrl(stay.address || stay.name, stop?.name || "");
             const bookingUrl = safeExternalLink(stay.bookingUrl);
             return <article className="card hotel-stay-card" key={stay.id}>
               <div className="hotel-date-band">
@@ -1890,9 +1817,9 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                 </div>
                 <details className="app-links-editor"><summary>Link prenotazione e mappa</summary><div>
                   <label>Prenotazione<input value={stay.bookingUrl || ""} placeholder="https://…" onChange={(event) => updateHotelStay(stay.id, { bookingUrl: event.target.value })} /></label>
-                  <label>Link Amap<input value={stay.mapUrl || ""} placeholder="Automatico se vuoto" onChange={(event) => updateHotelStay(stay.id, { mapUrl: event.target.value })} /></label>
+                  <label>Link mappa<input value={stay.mapUrl || ""} placeholder="Automatico se vuoto" onChange={(event) => updateHotelStay(stay.id, { mapUrl: event.target.value })} /></label>
                 </div></details>
-                <div className="hotel-actions"><a href={mapUrl} target="_blank" rel="noreferrer">Amap ↗</a>{bookingUrl && <a href={bookingUrl} target="_blank" rel="noreferrer">Prenotazione ↗</a>}</div>
+                <div className="hotel-actions"><a href={mapUrl} target="_blank" rel="noreferrer">Google Maps ↗</a>{bookingUrl && <a href={bookingUrl} target="_blank" rel="noreferrer">Prenotazione ↗</a>}</div>
               </div>
             </article>;
           })}
@@ -1958,7 +1885,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                   <span className="day-hotel-icon">⌂</span>
                   <div><small>Hotel della giornata · {stay.checkInDate === selectedDay?.dateKey ? "check-in" : stay.checkOutDate === dateKey(addDays(selectedDay?.date || ARRIVAL_DATE, 1)) ? "ultima notte" : `${hotelNights(stay)} notti`}</small><b>{stay.name}</b><p>{stay.address || stop?.name}</p></div>
                   <div className="day-hotel-dates"><span>{shortDate.format(new Date(`${stay.checkInDate}T12:00:00`))}<small>in</small></span><i>→</i><span>{shortDate.format(new Date(`${stay.checkOutDate}T12:00:00`))}<small>out</small></span></div>
-                  <div className="day-hotel-actions"><a href={safeExternalLink(stay.mapUrl) || amapSearchUrl(stay.address || stay.name, stop?.name || "")} target="_blank" rel="noreferrer">Amap ↗</a><button onClick={() => setSection("hotels")}>Modifica</button></div>
+                  <div className="day-hotel-actions"><a href={safeExternalLink(stay.mapUrl) || googleMapsSearchUrl(stay.address || stay.name, stop?.name || "")} target="_blank" rel="noreferrer">Google Maps ↗</a><button onClick={() => setSection("hotels")}>Modifica</button></div>
                 </article>;
               })}
             </div>
@@ -2005,13 +1932,13 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                     <label className={kind === "activity" ? "wide" : ""}>{kind === "transport" ? "A / destinazione" : kind === "hotel" ? "Hotel / indirizzo" : "Luogo"}<input value={item.location} placeholder="Nome anche in cinese, indirizzo o stazione" onChange={(event) => updateScheduleItem(item.id, { location: event.target.value })} onBlur={(event) => logScheduleField(item, "luogo", event.target.value)} /></label>
                   </div>
                   <details className="app-links-editor schedule-links"><summary>Link mappa personalizzato</summary><div>
-                    <label>Link Amap<input value={item.mapUrl || ""} placeholder="Automatico se vuoto" onChange={(event) => updateScheduleItem(item.id, { mapUrl: event.target.value })} /></label>
+                    <label>Link mappa<input value={item.mapUrl || ""} placeholder="Automatico se vuoto" onChange={(event) => updateScheduleItem(item.id, { mapUrl: event.target.value })} /></label>
                   </div></details>
                   <textarea aria-label="Note attività" value={item.notes} placeholder="Biglietti, cosa portare, note pratiche…" onChange={(event) => updateScheduleItem(item.id, { notes: event.target.value })} onBlur={() => recordChange("Note aggiornate", item.name)} />
                   <div className="schedule-meta">
                     <label>Costo per 2 <span className="money-input"><input type="number" min="0" step="0.01" value={item.price} onChange={(event) => updateScheduleItem(item.id, { price: Number(event.target.value) || 0 })} onBlur={(event) => logScheduleField(item, "costo", formatCost(Number(event.target.value) || 0, item.currency))} /><select aria-label={`Valuta ${item.name}`} value={item.currency || "EUR"} onChange={(event) => { updateScheduleItem(item.id, { currency: event.target.value as Currency }); recordChange("Valuta modificata", `${item.name}: ${event.target.value}`); }}><option value="EUR">€</option><option value="CNY">¥</option></select></span></label>
                     <label>Stato <select value={item.bookingStatus} onChange={(event) => { updateScheduleItem(item.id, { bookingStatus: event.target.value as ScheduleItem["bookingStatus"] }); recordChange("Stato modificato", `${item.name}: ${event.target.options[event.target.selectedIndex].text}`); }}><option value="da-prenotare">Da prenotare</option><option value="prenotato">Prenotato</option><option value="non-serve">Nessuna prenotazione</option></select></label>
-                    {itemMapLink && <a className="map-link" href={itemMapLink} target="_blank" rel="noreferrer">Apri in Amap ↗</a>}
+                    {itemMapLink && <a className="map-link" href={itemMapLink} target="_blank" rel="noreferrer">Apri in Google Maps ↗</a>}
                     {item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noreferrer">Fonte ↗</a>}
                     <button className="danger-text" onClick={() => removeScheduleItem(item.id)}>Elimina</button>
                   </div>
@@ -2032,7 +1959,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                 {newScheduleItem.kind === "activity" && <label>Categoria<select value={newScheduleItem.category} onChange={(event) => setNewScheduleItem((current) => ({ ...current, category: event.target.value }))}>{categoryOptions.map((category) => <option value={category.value} key={category.value}>{category.label}</option>)}</select></label>}
                 {newScheduleItem.kind === "transport" && <><label>Mezzo<input value={newScheduleItem.transportMode} placeholder="Treno, Didi, metro…" onChange={(event) => setNewScheduleItem((current) => ({ ...current, transportMode: event.target.value }))} /></label><label className="wide">Da<input value={newScheduleItem.fromLocation} placeholder="Hotel o punto di partenza" onChange={(event) => setNewScheduleItem((current) => ({ ...current, fromLocation: event.target.value }))} /></label></>}
                 <label className="wide">{newScheduleItem.kind === "transport" ? "A / destinazione" : newScheduleItem.kind === "hotel" ? "Hotel / indirizzo" : "Luogo"}<input value={newScheduleItem.location} placeholder="Nome, indirizzo o stazione (meglio anche in cinese)" onChange={(event) => setNewScheduleItem((current) => ({ ...current, location: event.target.value }))} /></label>
-                <label>Link mappa (opzionale)<input type="url" value={newScheduleItem.mapUrl} placeholder="Link Amap del luogo" onChange={(event) => setNewScheduleItem((current) => ({ ...current, mapUrl: event.target.value }))} /></label>
+                <label>Link mappa (opzionale)<input type="url" value={newScheduleItem.mapUrl} placeholder="Link Google Maps del luogo" onChange={(event) => setNewScheduleItem((current) => ({ ...current, mapUrl: event.target.value }))} /></label>
                 <label>Costo per 2<span className="money-input"><input type="number" min="0" step="0.01" value={newScheduleItem.price} onChange={(event) => setNewScheduleItem((current) => ({ ...current, price: Number(event.target.value) || 0 }))} /><select aria-label="Valuta nuova attività" value={newScheduleItem.currency} onChange={(event) => setNewScheduleItem((current) => ({ ...current, currency: event.target.value as Currency }))}><option value="EUR">€</option><option value="CNY">¥</option></select></span></label>
                 <label>Stato<select value={newScheduleItem.bookingStatus} onChange={(event) => setNewScheduleItem((current) => ({ ...current, bookingStatus: event.target.value as ScheduleItem["bookingStatus"] }))}><option value="da-prenotare">Da prenotare</option><option value="prenotato">Prenotato</option><option value="non-serve">Nessuna prenotazione</option></select></label>
                 <label className="full">Note<textarea value={newScheduleItem.notes} placeholder="Tempi di trasferimento, biglietti, promemoria…" onChange={(event) => setNewScheduleItem((current) => ({ ...current, notes: event.target.value }))} /></label>
@@ -2091,7 +2018,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                 <label>Costo per 2<span className="money-input"><input type="number" min="0" value={leg.cost} onChange={(event) => updateLeg(leg.id, { cost: Number(event.target.value) || 0 })} /><select aria-label={`Valuta ${fromStop?.name} ${toStop?.name}`} value={leg.currency || "EUR"} onChange={(event) => updateLeg(leg.id, { currency: event.target.value as Currency })}><option value="EUR">€</option><option value="CNY">¥</option></select></span></label>
               </div>
               <p>{leg.note}</p>
-              <div className="transport-actions"><button onClick={() => updateLeg(leg.id, { included: !leg.included })}>{leg.included ? "Togli dal viaggio" : "Aggiungi al viaggio"}</button><a href={amapSearchUrl(toStop?.name || "")} target="_blank" rel="noreferrer">Destinazione su Amap ↗</a></div>
+              <div className="transport-actions"><button onClick={() => updateLeg(leg.id, { included: !leg.included })}>{leg.included ? "Togli dal viaggio" : "Aggiungi al viaggio"}</button><a href={googleMapsSearchUrl(toStop?.name || "")} target="_blank" rel="noreferrer">Destinazione su Google Maps ↗</a></div>
             </article>;
           })}
         </div>

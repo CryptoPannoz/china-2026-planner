@@ -88,6 +88,7 @@ h3 { margin-bottom: 12px; font: 700 19px/1.1 Georgia, serif; }
 .map-legend { min-height: 41px; z-index: 800; display: flex; align-items: center; gap: 14px; padding: 8px 14px; border-top: 1px solid var(--line); color: var(--muted); background: rgba(255,253,248,.96); font-size: 9px; font-weight: 800; }
 .map-legend span { display: flex; align-items: center; gap: 5px; }
 .map-legend i { width: 9px; height: 9px; border-radius: 50%; background: var(--green); }
+.map-legend i.suggested { border: 2px dashed var(--orange); background: transparent; }
 .map-legend i.route { width: 20px; height: 3px; border-radius: 3px; background: var(--orange); }
 .map-legend i.route.off { height: 0; border-top: 2px dashed #8f9994; background: transparent; }
 .china-map-note { padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; gap: 14px; border-top: 1px solid var(--line); background: #f8f4e9; }
@@ -99,6 +100,8 @@ h3 { margin-bottom: 12px; font: 700 19px/1.1 Georgia, serif; }
 .route-pin { width: 34px; height: 34px; display: grid; place-items: center; border: 3px solid white; border-radius: 50%; color: white; background: var(--green); box-shadow: 0 7px 18px rgba(20,37,31,.28); font-weight: 900; transition: transform .18s ease, background .18s ease; }
 .route-pin:hover { transform: scale(1.14); background: #174b38; }
 .route-pin.edge { background: var(--orange); }
+.route-pin.suggested { width: 26px; height: 26px; border: 2px dashed var(--orange); color: var(--orange); background: rgba(255,253,248,.95); box-shadow: 0 4px 12px rgba(20,37,31,.18); font-size: 13px; }
+.route-pin.suggested:hover { background: #fff0dc; }
 .route-tooltip { padding: 4px 7px !important; border: 0 !important; border-radius: 7px !important; color: var(--ink) !important; background: rgba(255,253,248,.94) !important; box-shadow: 0 5px 14px rgba(20,37,31,.14) !important; font: 850 10px/1.2 Inter, system-ui, sans-serif !important; }
 .route-tooltip::before { border-top-color: rgba(255,253,248,.94) !important; }
 .route-popup b, .route-popup span, .route-popup small { display: block; }
@@ -415,23 +418,6 @@ h3 { margin-bottom: 12px; font: 700 19px/1.1 Georgia, serif; }
 /* --- Vincolo notti (date dei voli fisse) --- */
 .nights-notice { margin-bottom: 12px; padding: 11px 14px; border: 1px solid #f0ddba; border-radius: 12px; background: #fff6e4; color: #7a5220; font-size: 12px; font-weight: 700; line-height: 1.45; }
 
-/* --- Itinerari alternativi --- */
-.variants-card .active-plan { display: grid; gap: 4px; justify-items: end; }
-.variants-card .active-plan span { color: var(--muted); font-size: 9px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
-.variants-card .active-plan input { padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: white; font-size: 12px; font-weight: 800; text-align: right; min-width: 0; max-width: 190px; }
-.variant-list { display: grid; gap: 10px; }
-.variant-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 14px; align-items: center; padding: 13px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
-.variant-main b { font: 700 15px Georgia, serif; }
-.variant-main small { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
-.variant-actions { display: grid; gap: 6px; justify-items: stretch; }
-.variant-actions .primary { padding: 9px 13px; border: 0; border-radius: 9px; color: white; background: var(--green); font-size: 11px; font-weight: 800; cursor: pointer; white-space: nowrap; }
-.variant-actions .danger-text { text-align: center; }
-.add-variant { margin-top: 12px; padding-top: 12px; display: grid; grid-template-columns: 1fr auto; gap: 8px; border-top: 1px solid var(--line); }
-.add-variant input, .add-variant button { padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; }
-.add-variant input { min-width: 0; background: white; }
-.add-variant button { border-color: var(--green); color: white; background: var(--green); font-weight: 800; cursor: pointer; }
-.variant-hint { display: block; margin-top: 9px; color: var(--muted); font-size: 10px; line-height: 1.5; }
-
 /* --- Proposte di tappe / varianti --- */
 .suggestion-list { display: grid; gap: 10px; }
 .suggestion-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 14px; align-items: start; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
@@ -589,8 +575,6 @@ h3 { margin-bottom: 12px; font: 700 19px/1.1 Georgia, serif; }
   .activity-row > label { grid-column: 2; }
   .activity-row .clou-side { grid-column: 2; justify-items: start; }
   .suggestion-row { grid-template-columns: 1fr; }
-  .variant-row { grid-template-columns: 1fr; }
-  .add-variant { grid-template-columns: 1fr; }
   .suggestion-actions { grid-template-columns: 1fr auto; }
   .add-clou { grid-template-columns: 1fr; }
   .compare-row { grid-template-columns: minmax(0,1.3fr) 1fr 1fr 1fr; font-size: 11px; }

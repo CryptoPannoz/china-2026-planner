@@ -100,17 +100,18 @@ test("blocca le notti dentro le date fisse dei voli", async () => {
   assert.match(planner, /notti libere/);
 });
 
-test("gestisce itinerari alternativi salvabili e attivabili", async () => {
+test("usa Google Maps al posto di Amap e mostra le proposte sulla mappa", async () => {
   const planner = await source("app/ChinaPlanner.tsx");
 
-  assert.match(planner, /type ItineraryVariant = \{/);
-  assert.match(planner, /saveCurrentAsVariant/);
-  assert.match(planner, /activateVariant/);
-  assert.match(planner, /removeVariant/);
-  assert.match(planner, /activePlanName/);
-  assert.match(planner, /Itinerari alternativi/);
-  assert.match(planner, /Usa questo piano/);
-  assert.match(planner, /\+ Salva variante/);
+  assert.match(planner, /googleMapsSearchUrl/);
+  assert.match(planner, /googleMapsStopUrl/);
+  assert.match(planner, /google\.com\/maps\/search/);
+  assert.match(planner, /Apri in Google Maps/);
+  assert.doesNotMatch(planner, /amap/i);
+  assert.match(planner, /route-pin suggested/);
+  assert.match(planner, /suggestions=\{visibleSuggestions\}/);
+  assert.match(planner, /Città da valutare · \$\{suggestion\.nights\}/);
+  assert.match(planner, /Da valutare/);
 });
 
 test("propone varianti di tappe aggiungibili o scartabili", async () => {
@@ -141,7 +142,7 @@ test("struttura agenda, mappe e registro condiviso", async () => {
   assert.match(planner, /type ScheduleKind = "activity" \| "transport" \| "hotel"/);
   assert.match(planner, /Crea categoria/);
   assert.match(planner, /Aggiungi trasferimento/);
-  assert.match(planner, /Apri in Amap/);
+  assert.match(planner, /Apri in Google Maps/);
   assert.match(planner, /Ultimo autosalvataggio/);
   assert.match(planner, /Chi ha modificato cosa/);
   assert.match(planner, /compressCoverPhoto/);
@@ -152,11 +153,10 @@ test("struttura agenda, mappe e registro condiviso", async () => {
   assert.match(planner, /selectedDayHotels/);
   assert.doesNotMatch(planner, /Link condiviso WeChat/);
   assert.doesNotMatch(planner, /Link condiviso Alipay/);
-  assert.match(planner, /amapStopUrl/);
+  assert.match(planner, /googleMapsStopUrl/);
   assert.match(planner, /Panoramica itinerario · OpenStreetMap/);
   assert.match(planner, /La rotta completa, tappa per tappa/);
   assert.match(planner, /fitBounds/);
-  assert.doesNotMatch(planner, /Mappa principale · Amap/);
   assert.doesNotMatch(planner, /<option value="hotel">Hotel \/ notte<\/option>/);
   assert.match(rules, /change-log/);
   assert.match(rules, /allow read, create: if isPlannerMember/);
