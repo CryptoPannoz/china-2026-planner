@@ -88,6 +88,31 @@ test("mostra agenda per città e attività clou nell'itinerario", async () => {
   assert.match(planner, /day-clou-chips/);
 });
 
+test("blocca le notti dentro le date fisse dei voli", async () => {
+  const planner = await source("app/ChinaPlanner.tsx");
+
+  assert.match(planner, /changeStopNights/);
+  assert.match(planner, /showNightsNotice/);
+  assert.match(planner, /nightsNotice/);
+  assert.match(planner, /Le date dei voli sono fisse/);
+  assert.match(planner, /remainingNights < 1/);
+  assert.match(planner, /Math\.min\(suggestion\.nights, remainingNights\)/);
+  assert.match(planner, /notti libere/);
+});
+
+test("gestisce itinerari alternativi salvabili e attivabili", async () => {
+  const planner = await source("app/ChinaPlanner.tsx");
+
+  assert.match(planner, /type ItineraryVariant = \{/);
+  assert.match(planner, /saveCurrentAsVariant/);
+  assert.match(planner, /activateVariant/);
+  assert.match(planner, /removeVariant/);
+  assert.match(planner, /activePlanName/);
+  assert.match(planner, /Itinerari alternativi/);
+  assert.match(planner, /Usa questo piano/);
+  assert.match(planner, /\+ Salva variante/);
+});
+
 test("propone varianti di tappe aggiungibili o scartabili", async () => {
   const planner = await source("app/ChinaPlanner.tsx");
 

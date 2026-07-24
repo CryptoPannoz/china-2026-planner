@@ -94,6 +94,14 @@ type Leg = {
   note: string;
 };
 
+type ItineraryVariant = {
+  id: string;
+  name: string;
+  savedAt: string;
+  stops: Stop[];
+  legs: Leg[];
+};
+
 type CostEntry = {
   id: string;
   label: string;
@@ -117,6 +125,8 @@ type Expense = {
 
 type PlanData = {
   itineraryVersion: number;
+  activePlanName: string;
+  variants: ItineraryVariant[];
   stops: Stop[];
   legs: Leg[];
   scheduleItems: ScheduleItem[];
@@ -571,8 +581,14 @@ function normalizePlanData(value: unknown): PlanData | null {
     ? mergeById(makeDefaultHotelStays(stops), savedHotels)
     : savedHotels;
 
+  const variants = Array.isArray(data.variants)
+    ? (data.variants as ItineraryVariant[]).filter((variant) => variant && typeof variant.id === "string" && typeof variant.name === "string" && Array.isArray(variant.stops) && Array.isArray(variant.legs))
+    : [];
+
   return {
     itineraryVersion: ITINERARY_SCHEMA_VERSION,
+    activePlanName: typeof data.activePlanName === "string" && data.activePlanName.trim() ? data.activePlanName : "Piano principale",
+    variants,
     stops,
     legs,
     scheduleItems,
@@ -921,6 +937,11 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
   const [section, setSection] = useState("itinerary");
   const [stops, setStops] = useState<Stop[]>(initialStops);
   const [legs, setLegs] = useState<Leg[]>(initialLegs);
+  const [activePlanName, setActivePlanName] = useState("Piano principale");
+  const [variants, setVariants] = useState<ItineraryVariant[]>([]);
+  const [newVariantName, setNewVariantName] = useState("");
+  const [nightsNotice, setNightsNotice] = useState("");
+  const nightsNoticeTimer = useRef<number | null>(null);
   const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>(initialSchedule);
   const [hotelStays, setHotelStays] = useState<HotelStay[]>(initialHotelStays);
   const [selectedDate, setSelectedDate] = useState("2026-11-17");
@@ -985,6 +1006,8 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
         if (saved) {
           setStops(saved.stops);
           setLegs(saved.legs);
+          setActivePlanName(saved.activePlanName);
+          setVariants(saved.variants);
           setScheduleItems(saved.scheduleItems);
           setHotelStays(saved.hotelStays);
           setChecklist(saved.checklist);
@@ -1021,6 +1044,8 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
         lastCloudValueRef.current = serialized;
         setStops(remotePlan.stops);
         setLegs(remotePlan.legs);
+        setActivePlanName(remotePlan.activePlanName);
+        setVariants(remotePlan.variants);
         setScheduleItems(remotePlan.scheduleItems);
         setHotelStays(remotePlan.hotelStays);
         setChecklist(remotePlan.checklist);
@@ -1056,6 +1081,8 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
 
       let seedPlan: PlanData = {
         itineraryVersion: ITINERARY_SCHEMA_VERSION,
+        activePlanName: "Piano principale",
+        variants: [],
         stops: initialStops,
         legs: initialLegs,
         scheduleItems: initialSchedule,
@@ -1099,6 +1126,8 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     if (!hydrated) return;
     const planData: PlanData = {
       itineraryVersion: ITINERARY_SCHEMA_VERSION,
+      activePlanName,
+      variants,
       stops,
       legs,
       scheduleItems,
@@ -1130,7 +1159,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     }, 700);
 
     return () => window.clearTimeout(timer);
-  }, [stops, legs, scheduleItems, hotelStays, checklist, notes, cnyPerEuro, costEntries, expenses, customCategories, dismissedSuggestions, coverPhoto, hydrated, cloudReady]);
+  }, [stops, legs, activePlanName, variants, scheduleItems, hotelStays, checklist, notes, cnyPerEuro, costEntries, expenses, customCategories, dismissedSuggestions, coverPhoto, hydrated, cloudReady]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -1290,6 +1319,62 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     setStops((current) => current.map((stop) => (stop.id === id ? { ...stop, ...patch } : stop)));
   }
 
+  function showNightsNotice(message: string) {
+    setNightsNotice(message);
+    if (nightsNoticeTimer.current) window.clearTimeout(nightsNoticeTimer.current);
+    nightsNoticeTimer.current = window.setTimeout(() => setNightsNotice(""), 7000);
+  }
+
+  function changeStopNights(id: string, requested: number) {
+    const stop = stops.find((item) => item.id === id);
+    if (!stop) return;
+    const maxAllowed = stop.nights + Math.max(0, remainingNights);
+    const nights = Math.min(Math.max(1, requested), maxAllowed);
+    if (requested > maxAllowed) {
+      showNightsNotice(`Le date dei voli sono fisse (17 nov → 4 dic): ${stop.name} può avere al massimo ${maxAllowed} ${maxAllowed === 1 ? "notte" : "notti"}. Per aumentarle, libera prima una notte da un'altra tappa.`);
+    }
+    if (nights !== stop.nights) updateStop(id, { nights });
+  }
+
+  function saveCurrentAsVariant(event: FormEvent) {
+    event.preventDefault();
+    const name = newVariantName.trim() || `Variante ${variants.length + 1}`;
+    const variant: ItineraryVariant = {
+      id: uid("piano"),
+      name,
+      savedAt: new Date().toISOString(),
+      stops: structuredClone(stops),
+      legs: structuredClone(legs),
+    };
+    setVariants((current) => [...current, variant]);
+    setNewVariantName("");
+    recordChange("Itinerario alternativo salvato", `${name} · ${stops.length} tappe, ${usedNights} notti`);
+  }
+
+  function activateVariant(id: string) {
+    const variant = variants.find((item) => item.id === id);
+    if (!variant) return;
+    const backup: ItineraryVariant = {
+      id: variant.id,
+      name: activePlanName,
+      savedAt: new Date().toISOString(),
+      stops: structuredClone(stops),
+      legs: structuredClone(legs),
+    };
+    setVariants((current) => current.map((item) => item.id === id ? backup : item));
+    setStops(structuredClone(variant.stops));
+    setLegs(structuredClone(variant.legs));
+    setActivePlanName(variant.name);
+    if (!variant.stops.some((stop) => stop.id === selectedStopId)) setSelectedStopId(variant.stops[0]?.id || "beijing");
+    recordChange("Itinerario alternativo attivato", `Ora è attivo "${variant.name}"; "${backup.name}" resta salvato tra le varianti.`);
+  }
+
+  function removeVariant(id: string) {
+    const removed = variants.find((item) => item.id === id);
+    setVariants((current) => current.filter((item) => item.id !== id));
+    if (removed) recordChange("Itinerario alternativo eliminato", removed.name);
+  }
+
   function updateHotelStay(id: string, patch: Partial<HotelStay>) {
     setHotelStays((current) => current.map((stay) => stay.id === id ? { ...stay, ...patch } : stay));
   }
@@ -1339,6 +1424,10 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     event.preventDefault();
     const name = newStopName.trim();
     if (!name) return;
+    if (remainingNights < 1) {
+      showNightsNotice("Tutte le notti tra il 17 novembre e il 4 dicembre sono già assegnate: per aggiungere una città, togli prima una notte a un'altra tappa.");
+      return;
+    }
     const stop: Stop = { id: uid("stop"), name, lat: 30, lng: 111, nights: 1, hotelNightly: 80, activities: [] };
     setStops((current) => [...current.slice(0, -1), stop, current[current.length - 1]]);
     setSelectedStopId(stop.id);
@@ -1520,12 +1609,20 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
 
   function addSuggestedStop(suggestion: SuggestedStop) {
     if (stops.some((stop) => stop.id === suggestion.id)) return;
+    if (remainingNights < 1) {
+      showNightsNotice(`Non ci sono notti libere per ${suggestion.name}: le date dei voli sono fisse (17 nov → 4 dic). Togli prima una notte a un'altra tappa e riprova.`);
+      return;
+    }
+    const nights = Math.min(suggestion.nights, remainingNights);
+    if (nights < suggestion.nights) {
+      showNightsNotice(`${suggestion.name} aggiunta con ${nights} ${nights === 1 ? "notte" : "notti"} invece di ${suggestion.nights}: erano le uniche libere. Puoi ribilanciare le notti tra le tappe.`);
+    }
     const stop: Stop = {
       id: suggestion.id,
       name: suggestion.name,
       lat: suggestion.lat,
       lng: suggestion.lng,
-      nights: suggestion.nights,
+      nights,
       hotelNightly: suggestion.hotelNightly,
       activities: suggestion.activities.map((activity) => ({ ...activity })),
     };
@@ -1642,7 +1739,8 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
             </article>
 
             <article className="card">
-              <div className="card-head"><div><p className="eyebrow">Recap modificabile</p><h2>Tappe e collegamenti</h2></div><span className={`fit-badge ${remainingNights === 0 ? "ok" : ""}`}>{remainingNights === 0 ? "Finestra completa" : remainingNights > 0 ? `${remainingNights} notti da assegnare` : `${Math.abs(remainingNights)} notti oltre il volo`}</span></div>
+              <div className="card-head"><div><p className="eyebrow">Recap modificabile · 17 nov → 4 dic fissi</p><h2>Tappe e collegamenti</h2></div><span className={`fit-badge ${remainingNights === 0 ? "ok" : ""}`}>{remainingNights === 0 ? "Finestra completa" : remainingNights > 0 ? `${remainingNights} notti da assegnare` : `${Math.abs(remainingNights)} notti oltre il volo`}</span></div>
+              {nightsNotice && <div className="nights-notice" role="status">✈️ {nightsNotice}</div>}
               <div className="route-editor">
                 {timeline.map((item, index) => {
                   const leg = normalizedLegs[index];
@@ -1651,7 +1749,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                     <div className={`stop-editor ${selectedStop.id === item.stop.id ? "selected" : ""}`} onClick={() => setSelectedStopId(item.stop.id)}>
                       <span className="stop-number">{index + 1}</span>
                       <div className="stop-main"><b>{item.stop.name}</b><small>{shortDate.format(item.arrival)} → {shortDate.format(item.departure)} · {item.stop.nights} {item.stop.nights === 1 ? "notte" : "notti"}</small></div>
-                      <label>Notti<input type="number" min="1" max="8" value={item.stop.nights} onClick={(event) => event.stopPropagation()} onChange={(event) => updateStop(item.stop.id, { nights: Math.max(1, Number(event.target.value) || 1) })} /></label>
+                      <label>Notti<input type="number" min="1" max={item.stop.nights + Math.max(0, remainingNights)} value={item.stop.nights} onClick={(event) => event.stopPropagation()} onChange={(event) => changeStopNights(item.stop.id, Number(event.target.value) || 1)} /></label>
                       <div className="stop-actions">
                         {!locked && <><button title="Sposta su" onClick={(event) => { event.stopPropagation(); moveStop(item.stop.id, -1); }}>↑</button><button title="Sposta giù" onClick={(event) => { event.stopPropagation(); moveStop(item.stop.id, 1); }}>↓</button><button className="danger" title="Elimina tappa" onClick={(event) => { event.stopPropagation(); removeStop(item.stop.id); }}>×</button></>}
                         {locked && <span className="lock">volo</span>}
@@ -1664,8 +1762,37 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                     </div>}
                   </div>;
                 })}
-                <form className="add-stop" onSubmit={addStop}><input value={newStopName} onChange={(event) => setNewStopName(event.target.value)} placeholder="Aggiungi una città prima di Shanghai" /><button type="submit">+ Aggiungi tappa</button></form>
+                <form className="add-stop" onSubmit={addStop}><input value={newStopName} onChange={(event) => setNewStopName(event.target.value)} placeholder={remainingNights > 0 ? `Aggiungi una città (${remainingNights} ${remainingNights === 1 ? "notte libera" : "notti libere"})` : "Libera una notte da una tappa per aggiungere una città"} /><button type="submit">+ Aggiungi tappa</button></form>
               </div>
+            </article>
+
+            <article className="card variants-card">
+              <div className="card-head">
+                <div><p className="eyebrow">Piani a confronto · stesse date, città diverse</p><h2>Itinerari alternativi</h2></div>
+                <label className="active-plan"><span>Piano attivo</span><input value={activePlanName} aria-label="Nome del piano attivo" onChange={(event) => setActivePlanName(event.target.value)} onBlur={(event) => recordChange("Piano rinominato", event.target.value || "Piano principale")} /></label>
+              </div>
+              <div className="variant-list">
+                {variants.length === 0 && <p className="empty">Nessuna variante salvata. Salva il piano attuale, poi cambia liberamente città e notti: potrai sempre tornare indietro o confrontare le versioni.</p>}
+                {variants.map((variant) => {
+                  const variantNights = variant.stops.reduce((sum, stop) => sum + stop.nights, 0);
+                  return <div className="variant-row" key={variant.id}>
+                    <div className="variant-main">
+                      <b>{variant.name}</b>
+                      <small>{variant.stops.map((stop) => stop.name.split(" · ")[0]).join(" → ")}</small>
+                      <small>{variant.stops.length} tappe · {variantNights} {variantNights === 1 ? "notte" : "notti"}</small>
+                    </div>
+                    <div className="variant-actions">
+                      <button className="primary" onClick={() => activateVariant(variant.id)}>Usa questo piano</button>
+                      <button className="danger-text" onClick={() => removeVariant(variant.id)}>Elimina</button>
+                    </div>
+                  </div>;
+                })}
+              </div>
+              <form className="add-variant" onSubmit={saveCurrentAsVariant}>
+                <input value={newVariantName} placeholder={`Salva "${activePlanName}" come… (es. Piano B con Guilin)`} onChange={(event) => setNewVariantName(event.target.value)} />
+                <button type="submit">+ Salva variante</button>
+              </form>
+              <small className="variant-hint">Quando attivi una variante, il piano attuale prende il suo posto nell&apos;elenco: non perdi mai niente. Agenda, hotel e spese restano invariati.</small>
             </article>
 
             <article className="card suggestions-card">
