@@ -114,6 +114,24 @@ test("usa Google Maps al posto di Amap e mostra le proposte sulla mappa", async 
   assert.match(planner, /Da valutare/);
 });
 
+test("l'agenda copre sempre le 17 notti e mostra l'hotel in cinese per il tassista", async () => {
+  const [planner, css] = await Promise.all([
+    source("app/ChinaPlanner.tsx"),
+    source("app/globals.css"),
+  ]);
+
+  assert.match(planner, /Da pianificare/);
+  assert.match(planner, /type: "free"/);
+  assert.match(planner, /night = usedNights; night < TRIP_NIGHTS/);
+  assert.match(planner, /nameZh/);
+  assert.match(planner, /addressZh/);
+  assert.match(planner, /Mostra in cinese/);
+  assert.match(planner, /taxi-overlay/);
+  assert.match(planner, /请送我们到这家酒店/);
+  assert.match(css, /\.day-strip \{ position: sticky/);
+  assert.match(css, /\.taxi-card/);
+});
+
 test("propone varianti di tappe aggiungibili o scartabili", async () => {
   const planner = await source("app/ChinaPlanner.tsx");
 

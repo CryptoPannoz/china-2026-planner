@@ -45,7 +45,9 @@ type HotelStay = {
   id: string;
   stopId: string;
   name: string;
+  nameZh?: string;
   address: string;
+  addressZh?: string;
   checkInDate: string;
   checkOutDate: string;
   nightlyPrice: number;
@@ -945,6 +947,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
   const [legs, setLegs] = useState<Leg[]>(initialLegs);
   const [nightsNotice, setNightsNotice] = useState("");
   const nightsNoticeTimer = useRef<number | null>(null);
+  const [taxiHotelId, setTaxiHotelId] = useState<string | null>(null);
   const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>(initialSchedule);
   const [hotelStays, setHotelStays] = useState<HotelStay[]>(initialHotelStays);
   const [selectedDate, setSelectedDate] = useState("2026-11-17");
@@ -1224,8 +1227,20 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
         });
       }
     });
+    // Le date del viaggio sono fisse: i giorni senza tappa restano visibili come "da pianificare".
+    for (let night = usedNights; night < TRIP_NIGHTS; night++) {
+      const date = addDays(ARRIVAL_DATE, night);
+      entries.push({
+        date,
+        dateKey: dateKey(date),
+        stopId: "",
+        city: "Da pianificare",
+        type: "free",
+        detail: "Notte ancora da assegnare a una tappa",
+      });
+    }
     return entries;
-  }, [timeline, normalizedLegs]);
+  }, [timeline, normalizedLegs, usedNights]);
 
   const selectedDay = calendarDays.find((entry) => entry.dateKey === selectedDate) ?? calendarDays[0];
   const selectedDayItems = scheduleItems
@@ -1630,6 +1645,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     ["planner", "Checklist & note"],
     ["history", "Modifiche"],
   ];
+  const taxiHotel = hotelStays.find((stay) => stay.id === taxiHotelId) || null;
   const syncLabel = {
     loading: "Collegamento al database…",
     saving: "Salvataggio…",
@@ -1676,7 +1692,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
         <>
         <div className="trip-strip" aria-label="I 17 giorni del viaggio">
           {calendarDays.map((entry, index) => (
-            <button key={entry.dateKey} className={`${entry.stopId === selectedStop.id ? "current" : ""} ${entry.type}`} onClick={() => setSelectedStopId(entry.stopId)} title={`Giorno ${index + 1} · ${entry.city}`}>
+            <button key={entry.dateKey} className={`${entry.stopId && entry.stopId === selectedStop.id ? "current" : ""} ${entry.type}`} onClick={() => entry.stopId && setSelectedStopId(entry.stopId)} title={`Giorno ${index + 1} · ${entry.city}`}>
               <small>G{index + 1}</small>
               <b>{shortDate.format(entry.date)}</b>
               <span>{entry.city}</span>
@@ -1810,7 +1826,9 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                 <div className="hotel-fields">
                   <label>Data check-in<input type="date" value={stay.checkInDate} onChange={(event) => updateHotelStay(stay.id, { checkInDate: event.target.value })} onBlur={(event) => recordChange("Check-in modificato", `${stay.name}: ${event.target.value}`)} /></label>
                   <label>Data check-out<input type="date" value={stay.checkOutDate} onChange={(event) => updateHotelStay(stay.id, { checkOutDate: event.target.value })} onBlur={(event) => recordChange("Check-out modificato", `${stay.name}: ${event.target.value}`)} /></label>
-                  <label className="wide">Indirizzo<input value={stay.address} placeholder="Nome e indirizzo, meglio anche in cinese" onChange={(event) => updateHotelStay(stay.id, { address: event.target.value })} onBlur={(event) => recordChange("Indirizzo hotel modificato", `${stay.name}: ${event.target.value}`)} /></label>
+                  <label className="wide">Indirizzo<input value={stay.address} placeholder="Nome e indirizzo dell'hotel" onChange={(event) => updateHotelStay(stay.id, { address: event.target.value })} onBlur={(event) => recordChange("Indirizzo hotel modificato", `${stay.name}: ${event.target.value}`)} /></label>
+                  <label>Nome in cinese<input value={stay.nameZh || ""} placeholder="酒店名称 · per il tassista" onChange={(event) => updateHotelStay(stay.id, { nameZh: event.target.value })} onBlur={() => recordChange("Nome cinese aggiornato", stay.name)} /></label>
+                  <label className="wide">Indirizzo in cinese<input value={stay.addressZh || ""} placeholder="中文地址 · copialo dalla prenotazione" onChange={(event) => updateHotelStay(stay.id, { addressZh: event.target.value })} onBlur={() => recordChange("Indirizzo cinese aggiornato", stay.name)} /></label>
                   <label>Prezzo per notte<span className="money-input"><input type="number" min="0" step="0.01" value={stay.nightlyPrice} onChange={(event) => updateHotelStay(stay.id, { nightlyPrice: Number(event.target.value) || 0 })} onBlur={(event) => recordChange("Prezzo hotel modificato", `${stay.name}: ${formatCost(Number(event.target.value) || 0, stay.currency)}`)} /><select aria-label={`Valuta ${stay.name}`} value={stay.currency} onChange={(event) => updateHotelStay(stay.id, { currency: event.target.value as Currency })}><option value="EUR">€</option><option value="CNY">¥</option></select></span></label>
                   <label>Stato<select value={stay.bookingStatus} onChange={(event) => { updateHotelStay(stay.id, { bookingStatus: event.target.value as HotelStay["bookingStatus"] }); recordChange("Stato hotel modificato", `${stay.name}: ${event.target.options[event.target.selectedIndex].text}`); }}><option value="da-prenotare">Da prenotare</option><option value="prenotato">Prenotato</option></select></label>
                   <label className="wide">Note<textarea value={stay.notes} placeholder="Colazione, cancellazione, camera, deposito bagagli…" onChange={(event) => updateHotelStay(stay.id, { notes: event.target.value })} onBlur={() => recordChange("Note hotel aggiornate", stay.name)} /></label>
@@ -1819,7 +1837,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                   <label>Prenotazione<input value={stay.bookingUrl || ""} placeholder="https://…" onChange={(event) => updateHotelStay(stay.id, { bookingUrl: event.target.value })} /></label>
                   <label>Link mappa<input value={stay.mapUrl || ""} placeholder="Automatico se vuoto" onChange={(event) => updateHotelStay(stay.id, { mapUrl: event.target.value })} /></label>
                 </div></details>
-                <div className="hotel-actions"><a href={mapUrl} target="_blank" rel="noreferrer">Google Maps ↗</a>{bookingUrl && <a href={bookingUrl} target="_blank" rel="noreferrer">Prenotazione ↗</a>}</div>
+                <div className="hotel-actions"><button className="taxi-button" onClick={() => setTaxiHotelId(stay.id)}>🚕 Mostra in cinese</button><a href={mapUrl} target="_blank" rel="noreferrer">Google Maps ↗</a>{bookingUrl && <a href={bookingUrl} target="_blank" rel="noreferrer">Prenotazione ↗</a>}</div>
               </div>
             </article>;
           })}
@@ -1866,7 +1884,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
           <div className="agenda-main">
             <article className="card day-overview">
               <div>
-                <p className="eyebrow">{selectedDay?.type === "travel" ? "Giornata di spostamento" : "Giornata in città"}</p>
+                <p className="eyebrow">{selectedDay?.type === "travel" ? "Giornata di spostamento" : selectedDay?.type === "free" ? "Giornata da pianificare · assegna le notti dall'Itinerario" : "Giornata in città"}</p>
                 <h2>{selectedDay ? longDate.format(selectedDay.date) : ""}</h2>
                 <strong>{selectedDay?.city}</strong>
               </div>
@@ -1885,7 +1903,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                   <span className="day-hotel-icon">⌂</span>
                   <div><small>Hotel della giornata · {stay.checkInDate === selectedDay?.dateKey ? "check-in" : stay.checkOutDate === dateKey(addDays(selectedDay?.date || ARRIVAL_DATE, 1)) ? "ultima notte" : `${hotelNights(stay)} notti`}</small><b>{stay.name}</b><p>{stay.address || stop?.name}</p></div>
                   <div className="day-hotel-dates"><span>{shortDate.format(new Date(`${stay.checkInDate}T12:00:00`))}<small>in</small></span><i>→</i><span>{shortDate.format(new Date(`${stay.checkOutDate}T12:00:00`))}<small>out</small></span></div>
-                  <div className="day-hotel-actions"><a href={safeExternalLink(stay.mapUrl) || googleMapsSearchUrl(stay.address || stay.name, stop?.name || "")} target="_blank" rel="noreferrer">Google Maps ↗</a><button onClick={() => setSection("hotels")}>Modifica</button></div>
+                  <div className="day-hotel-actions"><button className="taxi-button" onClick={() => setTaxiHotelId(stay.id)}>🚕 Mostra in cinese</button><a href={safeExternalLink(stay.mapUrl) || googleMapsSearchUrl(stay.address || stay.name, stop?.name || "")} target="_blank" rel="noreferrer">Google Maps ↗</a><button onClick={() => setSection("hotels")}>Modifica</button></div>
                 </article>;
               })}
             </div>
@@ -2117,6 +2135,18 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
           </div>}
         </article>
       </section>}
+
+      {taxiHotel && <div className="taxi-overlay" role="dialog" aria-modal="true" aria-label="Hotel in cinese per il tassista" onClick={() => setTaxiHotelId(null)}>
+        <div className="taxi-card" onClick={(event) => event.stopPropagation()}>
+          <p className="taxi-kicker">请送我们到这家酒店，谢谢！</p>
+          <small className="taxi-kicker-it">«Per favore, ci porti a questo hotel. Grazie!»</small>
+          <h2>{taxiHotel.nameZh?.trim() || taxiHotel.name}</h2>
+          <p className="taxi-address">{taxiHotel.addressZh?.trim() || taxiHotel.address || "Indirizzo da inserire nella sezione Hotel"}</p>
+          {!(taxiHotel.nameZh?.trim() && taxiHotel.addressZh?.trim()) && <small className="taxi-hint">Consiglio: incolla nome e indirizzo in cinese nella sezione Hotel, così il tassista li legge senza dubbi.</small>}
+          {(taxiHotel.nameZh?.trim() || taxiHotel.addressZh?.trim()) && <div className="taxi-latin"><b>{taxiHotel.name}</b><span>{taxiHotel.address}</span></div>}
+          <button className="taxi-close" onClick={() => setTaxiHotelId(null)}>Chiudi</button>
+        </div>
+      </div>}
     </main>
   );
 }
