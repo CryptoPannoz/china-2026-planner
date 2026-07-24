@@ -106,7 +106,7 @@ test("usa Google Maps al posto di Amap e mostra le proposte sulla mappa", async 
   assert.match(planner, /googleMapsSearchUrl/);
   assert.match(planner, /googleMapsStopUrl/);
   assert.match(planner, /google\.com\/maps\/search/);
-  assert.match(planner, /Apri in Google Maps/);
+  assert.match(planner, /in Google Maps ↗/);
   assert.doesNotMatch(planner, /amap/i);
   assert.match(planner, /route-pin suggested/);
   assert.match(planner, /suggestions=\{visibleSuggestions\}/);
@@ -128,8 +128,30 @@ test("l'agenda copre sempre le 17 notti e mostra l'hotel in cinese per il tassis
   assert.match(planner, /Mostra in cinese/);
   assert.match(planner, /taxi-overlay/);
   assert.match(planner, /请送我们到这家酒店/);
-  assert.match(css, /\.day-strip \{ position: sticky/);
+  assert.match(css, /\.day-strip-wrap \{ position: sticky/);
   assert.match(css, /\.taxi-card/);
+});
+
+test("restyle: hero essenziale, font unico, cinese e biglietti nelle attività", async () => {
+  const [planner, css] = await Promise.all([
+    source("app/ChinaPlanner.tsx"),
+    source("app/globals.css"),
+  ]);
+
+  assert.doesNotMatch(planner, /Piano operativo/);
+  assert.doesNotMatch(planner, /Ogni giorno\./);
+  assert.match(planner, /hero-bar/);
+  assert.match(planner, /day-strip-current/);
+  assert.match(planner, /ticketUrl/);
+  assert.match(planner, /Link biglietto \/ PDF/);
+  assert.match(planner, /translate\.google\.com/);
+  assert.match(planner, /STOP_ZH/);
+  assert.match(planner, /ACTIVITY_ZH/);
+  assert.match(planner, /enrichStopsZh/);
+  assert.match(planner, /schedule-more/);
+  assert.match(planner, /故宫博物院/);
+  assert.doesNotMatch(css, /Georgia, serif/);
+  assert.match(css, /--sans:/);
 });
 
 test("propone varianti di tappe aggiungibili o scartabili", async () => {
@@ -160,7 +182,7 @@ test("struttura agenda, mappe e registro condiviso", async () => {
   assert.match(planner, /type ScheduleKind = "activity" \| "transport" \| "hotel"/);
   assert.match(planner, /Crea categoria/);
   assert.match(planner, /Aggiungi trasferimento/);
-  assert.match(planner, /Apri in Google Maps/);
+  assert.match(planner, /Google Maps ↗/);
   assert.match(planner, /Ultimo autosalvataggio/);
   assert.match(planner, /Chi ha modificato cosa/);
   assert.match(planner, /compressCoverPhoto/);

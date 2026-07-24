@@ -11,6 +11,7 @@ type ScheduleKind = "activity" | "transport" | "hotel";
 type Activity = {
   id: string;
   name: string;
+  nameZh?: string;
   description: string;
   price: number;
   currency?: Currency;
@@ -25,9 +26,12 @@ type ScheduleItem = {
   startTime: string;
   endTime: string;
   name: string;
+  nameZh?: string;
   kind?: ScheduleKind;
   category: string;
   location: string;
+  locationZh?: string;
+  ticketUrl?: string;
   fromLocation?: string;
   transportMode?: string;
   mapUrl?: string;
@@ -63,11 +67,20 @@ type HotelStay = {
 type Stop = {
   id: string;
   name: string;
+  nameZh?: string;
   lat: number;
   lng: number;
   nights: number;
   hotelNightly: number;
   activities: Activity[];
+};
+
+type TaxiInfo = {
+  kind: "hotel" | "place";
+  title: string;
+  titleZh?: string;
+  subtitle: string;
+  subtitleZh?: string;
 };
 
 type SuggestedStop = {
@@ -489,6 +502,119 @@ const SUGGESTED_STOPS: SuggestedStop[] = [
   },
 ];
 
+// Nomi in cinese di città e attività: servono per chiedere indicazioni o mostrarli a un tassista.
+const STOP_ZH: Record<string, string> = {
+  beijing: "北京",
+  xian: "西安",
+  chengdu: "成都",
+  kunming: "昆明",
+  zhangjiajie: "张家界",
+  fenghuang: "凤凰古城",
+  wuzhen: "乌镇",
+  suzhou: "苏州",
+  shanghai: "上海",
+  chongqing: "重庆",
+  guilin: "桂林·阳朔",
+  lijiang: "丽江",
+  dali: "大理",
+  emeishan: "峨眉山",
+  xiamen: "厦门",
+  hangzhou: "杭州",
+  huangshan: "黄山",
+};
+
+const ACTIVITY_ZH: Record<string, string> = {
+  "forbidden-city": "故宫博物院",
+  "great-wall": "慕田峪长城",
+  "temple-heaven": "天坛公园",
+  "summer-palace": "颐和园",
+  "peking-duck": "四季民福烤鸭店",
+  "hutong-houhai": "什刹海·后海",
+  "lama-temple": "雍和宫",
+  terracotta: "秦始皇兵马俑博物馆",
+  "city-wall-bike": "西安城墙（南门）",
+  "muslim-quarter": "回民街",
+  "big-wild-goose-pagoda": "大雁塔",
+  "tang-dynasty-show": "唐乐宫",
+  pandas: "成都大熊猫繁育研究基地",
+  "sichuan-opera": "蜀风雅韵（川剧变脸）",
+  "peoples-park": "人民公园·鹤鸣茶社",
+  "jinli-street": "锦里·武侯祠",
+  "leshan-buddha": "乐山大佛",
+  "wenshu-monastery": "文殊院",
+  "stone-forest": "石林风景区",
+  "green-lake-gulls": "翠湖公园",
+  "western-hills-dragon-gate": "西山龙门",
+  "dianchi-haigeng": "海埂大坝",
+  "yuantong-temple": "圆通寺",
+  "flower-bird-market": "景星花鸟市场",
+  "forest-park": "张家界国家森林公园",
+  "tianmen-mountain": "天门山",
+  "grand-canyon-glass-bridge": "张家界大峡谷玻璃桥",
+  "bailong-elevator": "百龙天梯",
+  "tianzi-cable-car": "天子山索道",
+  tuojiang: "沱江泛舟",
+  "old-town-night": "凤凰古城",
+  "combo-ticket-attractions": "凤凰古城景点联票",
+  "stepping-stones-bridges": "沱江跳岩",
+  xizha: "西栅景区",
+  "canal-night-boat": "乌镇摇橹船",
+  "dongzha-morning": "东栅景区",
+  "folk-shows": "乌镇民俗表演",
+  "humble-garden": "拙政园",
+  "pingjiang-road": "平江路",
+  "suzhou-museum": "苏州博物馆",
+  "master-of-nets-night": "网师园",
+  "tiger-hill": "虎丘",
+  "shantang-street": "山塘街",
+  "bund-night": "外滩",
+  tower: "上海中心大厦",
+  "yu-garden": "豫园",
+  "huangpu-cruise": "黄浦江游船",
+  "french-concession": "武康路·法租界",
+  "shanghai-museum": "上海博物馆",
+  "hongya-cave": "洪崖洞",
+  "dazu-rock-carvings": "大足石刻",
+  "yangtze-cableway": "长江索道",
+  "li-river-cruise": "漓江游船",
+  "yulong-bamboo-raft": "遇龙河竹筏",
+  "reed-flute-cave": "芦笛岩",
+  "jade-dragon-snow-mountain": "玉龙雪山",
+  "lijiang-old-town": "丽江古城·黑龙潭",
+  "shuhe-old-town": "束河古镇",
+  "three-pagodas": "崇圣寺三塔",
+  "erhai-lake-loop": "洱海",
+  "cangshan-cableway": "苍山索道",
+  "cima-dorata-jinding": "峨眉山金顶",
+  "buddha-gigante-leshan": "乐山大佛",
+  "terme-di-emei": "峨眉山温泉",
+  "gulangyu-sunlight-rock": "鼓浪屿·日光岩",
+  "tempio-nanputuo": "南普陀寺",
+  "zengcuoan-lungomare": "曾厝垵",
+  "crociera-lago-ovest": "西湖游船",
+  "lingyin-feilai-feng": "灵隐寺·飞来峰",
+  "villaggio-te-longjing": "龙井村",
+  "vetta-huangshan": "黄山",
+  "borgo-hongcun": "宏村",
+  "borgo-xidi": "西递",
+};
+
+function enrichStopsZh(stops: Stop[]): Stop[] {
+  return stops.map((stop) => ({
+    ...stop,
+    nameZh: stop.nameZh || STOP_ZH[stop.id],
+    activities: stop.activities.map((activity) => ({ ...activity, nameZh: activity.nameZh || ACTIVITY_ZH[activity.id] })),
+  }));
+}
+
+function enrichScheduleZh(items: ScheduleItem[], stops: Stop[]): ScheduleItem[] {
+  return items.map((item) => ({
+    ...item,
+    nameZh: item.nameZh || (item.sourceActivityId ? ACTIVITY_ZH[item.sourceActivityId] : undefined),
+    locationZh: item.locationZh || (scheduleKind(item) === "activity" ? stops.find((stop) => stop.id === item.stopId)?.nameZh || STOP_ZH[item.stopId] : undefined),
+  }));
+}
+
 const initialHotelStays = makeDefaultHotelStays(initialStops);
 
 const initialLegs: Leg[] = [
@@ -573,11 +699,13 @@ function normalizePlanData(value: unknown): PlanData | null {
     ? mergeById(makeDefaultHotelStays(stops), savedHotels)
     : savedHotels;
 
+  const stopsZh = enrichStopsZh(stops);
+
   return {
     itineraryVersion: ITINERARY_SCHEMA_VERSION,
-    stops,
+    stops: stopsZh,
     legs,
-    scheduleItems,
+    scheduleItems: enrichScheduleZh(scheduleItems, stopsZh),
     hotelStays,
     checklist: Array.isArray(data.checklist) && data.checklist.length === defaultChecklist.length ? data.checklist : defaultChecklist.map(() => false),
     notes: typeof data.notes === "string" ? data.notes : "",
@@ -674,6 +802,10 @@ function mapLinkFor(item: ScheduleItem, city: string) {
 
 function webSearchUrl(queryText: string) {
   return `https://www.google.com/search?q=${encodeURIComponent(queryText)}`;
+}
+
+function translateZhUrl(text: string) {
+  return `https://translate.google.com/?sl=auto&tl=zh-CN&text=${encodeURIComponent(text)}&op=translate`;
 }
 
 function safeExternalLink(value: string | undefined) {
@@ -947,7 +1079,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
   const [legs, setLegs] = useState<Leg[]>(initialLegs);
   const [nightsNotice, setNightsNotice] = useState("");
   const nightsNoticeTimer = useRef<number | null>(null);
-  const [taxiHotelId, setTaxiHotelId] = useState<string | null>(null);
+  const [taxiInfo, setTaxiInfo] = useState<TaxiInfo | null>(null);
   const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>(initialSchedule);
   const [hotelStays, setHotelStays] = useState<HotelStay[]>(initialHotelStays);
   const [selectedDate, setSelectedDate] = useState("2026-11-17");
@@ -1106,6 +1238,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
       } catch {
         // Usa il piano iniziale se il vecchio salvataggio non è leggibile.
       }
+      seedPlan = { ...seedPlan, stops: enrichStopsZh(seedPlan.stops), scheduleItems: enrichScheduleZh(seedPlan.scheduleItems, enrichStopsZh(seedPlan.stops)) };
 
       const serialized = JSON.stringify(seedPlan);
       lastCloudValueRef.current = serialized;
@@ -1166,6 +1299,11 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
       setChangeLog(snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() } as ChangeLogEntry)));
     }, () => setChangeLog([]));
   }, [hydrated]);
+
+  useEffect(() => {
+    if (section !== "calendar") return;
+    document.querySelector(".day-strip button.active")?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  }, [selectedDate, section]);
 
   const timeline = useMemo(() => {
     return stops.map((stop, index) => {
@@ -1255,7 +1393,6 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
       conflictingIds.add(item.id);
     }
   });
-  const plannedDayCount = calendarDays.filter((day) => scheduleItems.some((item) => item.date === day.dateKey)).length;
   const dayCost = selectedDayItems.reduce((sum, item) => sum + toEuro(item.price, item.currency), 0);
   const bookingCount = scheduleItems.filter((item) => item.bookingStatus === "da-prenotare").length;
   const spentTotal = expenses.reduce((sum, expense) => sum + toEuro(expense.amount, expense.currency), 0);
@@ -1465,9 +1602,11 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
       startTime,
       endTime,
       name: activity.name,
+      nameZh: activity.nameZh,
       kind: "activity",
       category: "visita",
       location: stop.name,
+      locationZh: stop.nameZh,
       notes: activity.description,
       price: activity.price,
       currency: activity.currency || "EUR",
@@ -1561,9 +1700,11 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
       startTime,
       endTime,
       name: activity.name,
+      nameZh: activity.nameZh,
       kind: "activity" as ScheduleKind,
       category: "visita",
       location: stop.name,
+      locationZh: stop.nameZh,
       notes: activity.description,
       price: activity.price,
       currency: activity.currency || "EUR",
@@ -1645,7 +1786,14 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     ["planner", "Checklist & note"],
     ["history", "Modifiche"],
   ];
-  const taxiHotel = hotelStays.find((stay) => stay.id === taxiHotelId) || null;
+  function showHotelInChinese(stay: HotelStay) {
+    setTaxiInfo({ kind: "hotel", title: stay.name, titleZh: stay.nameZh, subtitle: stay.address, subtitleZh: stay.addressZh });
+  }
+
+  function showPlaceInChinese(title: string, titleZh: string | undefined, subtitle: string, subtitleZh?: string) {
+    setTaxiInfo({ kind: "place", title, titleZh, subtitle, subtitleZh });
+  }
+
   const syncLabel = {
     loading: "Collegamento al database…",
     saving: "Salvataggio…",
@@ -1655,22 +1803,15 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
 
   return (
     <main className="shell">
-      <header className="hero has-photo" style={{ backgroundImage: `linear-gradient(90deg, rgba(6,27,20,.94), rgba(6,27,20,.46) 52%, rgba(6,27,20,.06)), url("${coverPhoto || "china-hero-couple.jpg"}")` }}>
-        <div>
-          <p className="eyebrow">Alberto & Sofia · Cina 2026</p>
-          <h1>Ogni giorno.<br />Ogni ora. Tutto qui.</h1>
-          <p className="lead">Un’agenda reale per costruire il viaggio: attività, tempi, spostamenti, prenotazioni e costi restano collegati.</p>
-        </div>
-        <div className="anchor-card">
-          <span>Piano operativo</span>
-          <strong>{plannedDayCount} / {calendarDays.length} giorni</strong>
-          <small>{scheduleItems.length} blocchi orari · {bookingCount} da prenotare</small>
+      <header className="hero has-photo" style={{ backgroundImage: `linear-gradient(0deg, rgba(6,27,20,.62), rgba(6,27,20,.06) 55%), url("${coverPhoto || "china-hero-couple.jpg"}")` }}>
+        <div className="hero-bar">
+          <p className="eyebrow">Alberto & Sofia · Cina 2026 · 17 nov → 4 dic</p>
           <div className="cover-actions">
-            <label>📷 {coverPhoto ? "Cambia foto" : "Aggiungi la vostra foto"}<input type="file" accept="image/*" onChange={changeCoverPhoto} /></label>
+            <label>📷 {coverPhoto ? "Cambia foto" : "Aggiungi foto"}<input type="file" accept="image/*" onChange={changeCoverPhoto} /></label>
             {coverPhoto && <button onClick={removeCoverPhoto}>Rimuovi</button>}
           </div>
-          {photoError && <p className="photo-error">{photoError}</p>}
         </div>
+        {photoError && <p className="photo-error">{photoError}</p>}
       </header>
 
       <div className="flight-anchors">
@@ -1785,7 +1926,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                 {selectedStop.activities.length === 0 && <p className="empty">Nessuna attività clou salvata: aggiungila qui sotto o cerca idee sul web.</p>}
                 {selectedStop.activities.map((activity) => <div className={`activity-row ${scheduleItems.some((item) => item.sourceActivityId === activity.id) ? "selected" : ""}`} key={activity.id}>
                   <button className="check" title="Metti in agenda nella prima giornata disponibile" onClick={() => scheduleActivity(selectedStop, activity)}>{scheduleItems.some((item) => item.sourceActivityId === activity.id) ? "✓" : "+"}</button>
-                  <div><b>{activity.name}</b>{activity.description && <small>{activity.description}</small>}<span className="activity-links"><a href={webSearchUrl(`${activity.name} ${selectedStop.name} biglietti orari`)} target="_blank" rel="noreferrer">Cerca sul web ↗</a><a href={googleMapsSearchUrl(activity.name, selectedStop.name)} target="_blank" rel="noreferrer">Google Maps ↗</a>{activity.sourceUrl && <a href={activity.sourceUrl} target="_blank" rel="noreferrer">Fonte ↗</a>}</span></div>
+                  <div><b>{activity.name}</b>{activity.nameZh && <button className="zh-chip" title="Mostra in cinese a schermo intero" onClick={() => showPlaceInChinese(activity.name, activity.nameZh, selectedStop.name, selectedStop.nameZh)}>中 {activity.nameZh}</button>}{activity.description && <small>{activity.description}</small>}<span className="activity-links"><a href={webSearchUrl(`${activity.name} ${selectedStop.name} biglietti sito ufficiale`)} target="_blank" rel="noreferrer">Cerca sul web ↗</a><a href={googleMapsSearchUrl(activity.name, selectedStop.name)} target="_blank" rel="noreferrer">Google Maps ↗</a>{activity.sourceUrl && <a href={activity.sourceUrl} target="_blank" rel="noreferrer">Fonte ↗</a>}</span></div>
                   <div className="clou-side">
                     <label className="money-input"><input type="number" min="0" value={activity.price} onChange={(event) => updateActivity(selectedStop.id, activity.id, { price: Number(event.target.value) || 0 })} /><select aria-label={`Valuta ${activity.name}`} value={activity.currency || "EUR"} onChange={(event) => updateActivity(selectedStop.id, activity.id, { currency: event.target.value as Currency })}><option value="EUR">€</option><option value="CNY">¥</option></select></label>
                     <button className="danger-text" onClick={() => removeClouActivity(selectedStop.id, activity.id)}>Togli</button>
@@ -1827,8 +1968,8 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                   <label>Data check-in<input type="date" value={stay.checkInDate} onChange={(event) => updateHotelStay(stay.id, { checkInDate: event.target.value })} onBlur={(event) => recordChange("Check-in modificato", `${stay.name}: ${event.target.value}`)} /></label>
                   <label>Data check-out<input type="date" value={stay.checkOutDate} onChange={(event) => updateHotelStay(stay.id, { checkOutDate: event.target.value })} onBlur={(event) => recordChange("Check-out modificato", `${stay.name}: ${event.target.value}`)} /></label>
                   <label className="wide">Indirizzo<input value={stay.address} placeholder="Nome e indirizzo dell'hotel" onChange={(event) => updateHotelStay(stay.id, { address: event.target.value })} onBlur={(event) => recordChange("Indirizzo hotel modificato", `${stay.name}: ${event.target.value}`)} /></label>
-                  <label>Nome in cinese<input value={stay.nameZh || ""} placeholder="酒店名称 · per il tassista" onChange={(event) => updateHotelStay(stay.id, { nameZh: event.target.value })} onBlur={() => recordChange("Nome cinese aggiornato", stay.name)} /></label>
-                  <label className="wide">Indirizzo in cinese<input value={stay.addressZh || ""} placeholder="中文地址 · copialo dalla prenotazione" onChange={(event) => updateHotelStay(stay.id, { addressZh: event.target.value })} onBlur={() => recordChange("Indirizzo cinese aggiornato", stay.name)} /></label>
+                  <label>Nome in cinese <a className="translate-link" href={translateZhUrl(stay.name)} target="_blank" rel="noreferrer">Traduci ↗</a><input value={stay.nameZh || ""} placeholder="Traduci il nome e incollalo qui" onChange={(event) => updateHotelStay(stay.id, { nameZh: event.target.value })} onBlur={() => recordChange("Nome cinese aggiornato", stay.name)} /></label>
+                  <label className="wide">Indirizzo in cinese <a className="translate-link" href={translateZhUrl(stay.address || stay.name)} target="_blank" rel="noreferrer">Traduci ↗</a><input value={stay.addressZh || ""} placeholder="Traduci l'indirizzo e incollalo qui" onChange={(event) => updateHotelStay(stay.id, { addressZh: event.target.value })} onBlur={() => recordChange("Indirizzo cinese aggiornato", stay.name)} /></label>
                   <label>Prezzo per notte<span className="money-input"><input type="number" min="0" step="0.01" value={stay.nightlyPrice} onChange={(event) => updateHotelStay(stay.id, { nightlyPrice: Number(event.target.value) || 0 })} onBlur={(event) => recordChange("Prezzo hotel modificato", `${stay.name}: ${formatCost(Number(event.target.value) || 0, stay.currency)}`)} /><select aria-label={`Valuta ${stay.name}`} value={stay.currency} onChange={(event) => updateHotelStay(stay.id, { currency: event.target.value as Currency })}><option value="EUR">€</option><option value="CNY">¥</option></select></span></label>
                   <label>Stato<select value={stay.bookingStatus} onChange={(event) => { updateHotelStay(stay.id, { bookingStatus: event.target.value as HotelStay["bookingStatus"] }); recordChange("Stato hotel modificato", `${stay.name}: ${event.target.options[event.target.selectedIndex].text}`); }}><option value="da-prenotare">Da prenotare</option><option value="prenotato">Prenotato</option></select></label>
                   <label className="wide">Note<textarea value={stay.notes} placeholder="Colazione, cancellazione, camera, deposito bagagli…" onChange={(event) => updateHotelStay(stay.id, { notes: event.target.value })} onBlur={() => recordChange("Note hotel aggiornate", stay.name)} /></label>
@@ -1837,7 +1978,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                   <label>Prenotazione<input value={stay.bookingUrl || ""} placeholder="https://…" onChange={(event) => updateHotelStay(stay.id, { bookingUrl: event.target.value })} /></label>
                   <label>Link mappa<input value={stay.mapUrl || ""} placeholder="Automatico se vuoto" onChange={(event) => updateHotelStay(stay.id, { mapUrl: event.target.value })} /></label>
                 </div></details>
-                <div className="hotel-actions"><button className="taxi-button" onClick={() => setTaxiHotelId(stay.id)}>🚕 Mostra in cinese</button><a href={mapUrl} target="_blank" rel="noreferrer">Google Maps ↗</a>{bookingUrl && <a href={bookingUrl} target="_blank" rel="noreferrer">Prenotazione ↗</a>}</div>
+                <div className="hotel-actions"><button className="taxi-button" onClick={() => showHotelInChinese(stay)}>🚕 Mostra in cinese</button><a href={mapUrl} target="_blank" rel="noreferrer">Google Maps ↗</a>{bookingUrl && <a href={bookingUrl} target="_blank" rel="noreferrer">Prenotazione ↗</a>}</div>
               </div>
             </article>;
           })}
@@ -1868,16 +2009,23 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
           <div className="agenda-summary"><span><b>{scheduleItems.length}</b> attività</span><span><b>{bookingCount}</b> da prenotare</span><span><b>{euro.format(activitiesCost)}</b> pianificati</span><button onClick={() => window.print()}>Stampa piano</button></div>
         </div>
 
-        <div className="day-strip" aria-label="Giorni del viaggio">
-          {calendarDays.map((entry, index) => {
-            const itemCount = scheduleItems.filter((item) => item.date === entry.dateKey).length;
-            return <button key={entry.dateKey} className={`${selectedDate === entry.dateKey ? "active" : ""} ${entry.type}`} onClick={() => setSelectedDate(entry.dateKey)}>
-              <small>G{index + 1}</small>
-              <b>{shortDate.format(entry.date)}</b>
-              <span>{entry.city}</span>
-              <i>{itemCount} blocchi</i>
-            </button>;
-          })}
+        <div className="day-strip-wrap">
+          <div className="day-strip-current" aria-live="polite">
+            <small>G{calendarDays.findIndex((entry) => entry.dateKey === selectedDay?.dateKey) + 1}</small>
+            <b>{selectedDay ? longDate.format(selectedDay.date) : ""}</b>
+            <span>{selectedDay?.city}</span>
+          </div>
+          <div className="day-strip" aria-label="Giorni del viaggio">
+            {calendarDays.map((entry, index) => {
+              const itemCount = scheduleItems.filter((item) => item.date === entry.dateKey).length;
+              return <button key={entry.dateKey} className={`${selectedDate === entry.dateKey ? "active" : ""} ${entry.type}`} onClick={() => setSelectedDate(entry.dateKey)}>
+                <small>G{index + 1}</small>
+                <b>{shortDate.format(entry.date)}</b>
+                <span>{entry.city}</span>
+                <i>{itemCount} blocchi</i>
+              </button>;
+            })}
+          </div>
         </div>
 
         <div className="agenda-layout">
@@ -1903,7 +2051,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                   <span className="day-hotel-icon">⌂</span>
                   <div><small>Hotel della giornata · {stay.checkInDate === selectedDay?.dateKey ? "check-in" : stay.checkOutDate === dateKey(addDays(selectedDay?.date || ARRIVAL_DATE, 1)) ? "ultima notte" : `${hotelNights(stay)} notti`}</small><b>{stay.name}</b><p>{stay.address || stop?.name}</p></div>
                   <div className="day-hotel-dates"><span>{shortDate.format(new Date(`${stay.checkInDate}T12:00:00`))}<small>in</small></span><i>→</i><span>{shortDate.format(new Date(`${stay.checkOutDate}T12:00:00`))}<small>out</small></span></div>
-                  <div className="day-hotel-actions"><button className="taxi-button" onClick={() => setTaxiHotelId(stay.id)}>🚕 Mostra in cinese</button><a href={safeExternalLink(stay.mapUrl) || googleMapsSearchUrl(stay.address || stay.name, stop?.name || "")} target="_blank" rel="noreferrer">Google Maps ↗</a><button onClick={() => setSection("hotels")}>Modifica</button></div>
+                  <div className="day-hotel-actions"><button className="taxi-button" onClick={() => showHotelInChinese(stay)}>🚕 Mostra in cinese</button><a href={safeExternalLink(stay.mapUrl) || googleMapsSearchUrl(stay.address || stay.name, stop?.name || "")} target="_blank" rel="noreferrer">Google Maps ↗</a><button onClick={() => setSection("hotels")}>Modifica</button></div>
                 </article>;
               })}
             </div>
@@ -1944,22 +2092,36 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                       <option value="activity">Attività</option><option value="transport">Trasporto</option>
                     </select>
                   </div>
-                  <div className="schedule-specifics">
-                    {kind === "activity" && <label>Categoria<select aria-label="Categoria" value={item.category} onChange={(event) => { updateScheduleItem(item.id, { category: event.target.value }); recordChange("Categoria modificata", `${item.name}: ${event.target.options[event.target.selectedIndex].text}`); }}>{categoryOptions.map((category) => <option value={category.value} key={category.value}>{category.label}</option>)}</select></label>}
-                    {kind === "transport" && <><label>Mezzo<input value={item.transportMode || ""} placeholder="Treno, Didi, metro…" onChange={(event) => updateScheduleItem(item.id, { transportMode: event.target.value })} onBlur={(event) => logScheduleField(item, "mezzo", event.target.value)} /></label><label>Da<input value={item.fromLocation || ""} placeholder="Hotel o punto di partenza" onChange={(event) => updateScheduleItem(item.id, { fromLocation: event.target.value })} onBlur={(event) => logScheduleField(item, "partenza", event.target.value)} /></label></>}
-                    <label className={kind === "activity" ? "wide" : ""}>{kind === "transport" ? "A / destinazione" : kind === "hotel" ? "Hotel / indirizzo" : "Luogo"}<input value={item.location} placeholder="Nome anche in cinese, indirizzo o stazione" onChange={(event) => updateScheduleItem(item.id, { location: event.target.value })} onBlur={(event) => logScheduleField(item, "luogo", event.target.value)} /></label>
+                  <div className="schedule-quick">
+                    {item.location && <span className="quick-place">📍 {item.location}</span>}
+                    {item.nameZh && <button className="quick-zh" title="Mostra in cinese a schermo intero" onClick={() => showPlaceInChinese(item.name, item.nameZh, item.location || selectedDay?.city || "", item.locationZh)}>中 {item.nameZh}</button>}
+                    {itemMapLink && <a href={itemMapLink} target="_blank" rel="noreferrer">Mappa ↗</a>}
+                    {safeExternalLink(item.ticketUrl) && <a href={safeExternalLink(item.ticketUrl)} target="_blank" rel="noreferrer">🎟 Biglietto ↗</a>}
                   </div>
-                  <details className="app-links-editor schedule-links"><summary>Link mappa personalizzato</summary><div>
-                    <label>Link mappa<input value={item.mapUrl || ""} placeholder="Automatico se vuoto" onChange={(event) => updateScheduleItem(item.id, { mapUrl: event.target.value })} /></label>
-                  </div></details>
-                  <textarea aria-label="Note attività" value={item.notes} placeholder="Biglietti, cosa portare, note pratiche…" onChange={(event) => updateScheduleItem(item.id, { notes: event.target.value })} onBlur={() => recordChange("Note aggiornate", item.name)} />
                   <div className="schedule-meta">
                     <label>Costo per 2 <span className="money-input"><input type="number" min="0" step="0.01" value={item.price} onChange={(event) => updateScheduleItem(item.id, { price: Number(event.target.value) || 0 })} onBlur={(event) => logScheduleField(item, "costo", formatCost(Number(event.target.value) || 0, item.currency))} /><select aria-label={`Valuta ${item.name}`} value={item.currency || "EUR"} onChange={(event) => { updateScheduleItem(item.id, { currency: event.target.value as Currency }); recordChange("Valuta modificata", `${item.name}: ${event.target.value}`); }}><option value="EUR">€</option><option value="CNY">¥</option></select></span></label>
                     <label>Stato <select value={item.bookingStatus} onChange={(event) => { updateScheduleItem(item.id, { bookingStatus: event.target.value as ScheduleItem["bookingStatus"] }); recordChange("Stato modificato", `${item.name}: ${event.target.options[event.target.selectedIndex].text}`); }}><option value="da-prenotare">Da prenotare</option><option value="prenotato">Prenotato</option><option value="non-serve">Nessuna prenotazione</option></select></label>
-                    {itemMapLink && <a className="map-link" href={itemMapLink} target="_blank" rel="noreferrer">Apri in Google Maps ↗</a>}
-                    {item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noreferrer">Fonte ↗</a>}
                     <button className="danger-text" onClick={() => removeScheduleItem(item.id)}>Elimina</button>
                   </div>
+                  <details className="schedule-more">
+                    <summary>Dettagli · luogo, biglietto, cinese, note</summary>
+                    <div className="schedule-specifics">
+                      {kind === "activity" && <label>Categoria<select aria-label="Categoria" value={item.category} onChange={(event) => { updateScheduleItem(item.id, { category: event.target.value }); recordChange("Categoria modificata", `${item.name}: ${event.target.options[event.target.selectedIndex].text}`); }}>{categoryOptions.map((category) => <option value={category.value} key={category.value}>{category.label}</option>)}</select></label>}
+                      {kind === "transport" && <><label>Mezzo<input value={item.transportMode || ""} placeholder="Treno, Didi, metro…" onChange={(event) => updateScheduleItem(item.id, { transportMode: event.target.value })} onBlur={(event) => logScheduleField(item, "mezzo", event.target.value)} /></label><label>Da<input value={item.fromLocation || ""} placeholder="Hotel o punto di partenza" onChange={(event) => updateScheduleItem(item.id, { fromLocation: event.target.value })} onBlur={(event) => logScheduleField(item, "partenza", event.target.value)} /></label></>}
+                      <label className={kind === "activity" ? "wide" : ""}>{kind === "transport" ? "A / destinazione" : "Luogo"}<input value={item.location} placeholder="Nome, indirizzo o stazione" onChange={(event) => updateScheduleItem(item.id, { location: event.target.value })} onBlur={(event) => logScheduleField(item, "luogo", event.target.value)} /></label>
+                      <label>Nome in cinese<input value={item.nameZh || ""} placeholder="Es. 故宫博物院" onChange={(event) => updateScheduleItem(item.id, { nameZh: event.target.value })} /></label>
+                      <label>Luogo in cinese<input value={item.locationZh || ""} placeholder="Indirizzo o zona in cinese" onChange={(event) => updateScheduleItem(item.id, { locationZh: event.target.value })} /></label>
+                      <label className="wide">Link biglietto / PDF<input value={item.ticketUrl || ""} placeholder="Link a biglietto, PDF su Drive o mail di conferma" onChange={(event) => updateScheduleItem(item.id, { ticketUrl: event.target.value })} onBlur={(event) => { if (event.target.value.trim()) logScheduleField(item, "biglietto", "link salvato"); }} /></label>
+                      <label className="wide">Link mappa personalizzato<input value={item.mapUrl || ""} placeholder="Automatico se vuoto" onChange={(event) => updateScheduleItem(item.id, { mapUrl: event.target.value })} /></label>
+                    </div>
+                    <div className="zh-tools">
+                      <button type="button" onClick={() => showPlaceInChinese(item.name, item.nameZh, item.location || selectedDay?.city || "", item.locationZh)}>🈶 Mostra in cinese</button>
+                      <a href={translateZhUrl(`${item.name}${item.location ? ", " + item.location : ""}`)} target="_blank" rel="noreferrer">Traduci con Google ↗</a>
+                      <a href={webSearchUrl(`${item.name} ${selectedDay?.city || ""} biglietti sito ufficiale`)} target="_blank" rel="noreferrer">Cerca link ufficiale ↗</a>
+                      {item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noreferrer">Fonte ↗</a>}
+                    </div>
+                    <textarea aria-label="Note attività" value={item.notes} placeholder="Biglietti, cosa portare, note pratiche…" onChange={(event) => updateScheduleItem(item.id, { notes: event.target.value })} onBlur={() => recordChange("Note aggiornate", item.name)} />
+                  </details>
                 </div>
               </article>;
               })}
@@ -2136,15 +2298,15 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
         </article>
       </section>}
 
-      {taxiHotel && <div className="taxi-overlay" role="dialog" aria-modal="true" aria-label="Hotel in cinese per il tassista" onClick={() => setTaxiHotelId(null)}>
+      {taxiInfo && <div className="taxi-overlay" role="dialog" aria-modal="true" aria-label="Nome in cinese da mostrare" onClick={() => setTaxiInfo(null)}>
         <div className="taxi-card" onClick={(event) => event.stopPropagation()}>
-          <p className="taxi-kicker">请送我们到这家酒店，谢谢！</p>
-          <small className="taxi-kicker-it">«Per favore, ci porti a questo hotel. Grazie!»</small>
-          <h2>{taxiHotel.nameZh?.trim() || taxiHotel.name}</h2>
-          <p className="taxi-address">{taxiHotel.addressZh?.trim() || taxiHotel.address || "Indirizzo da inserire nella sezione Hotel"}</p>
-          {!(taxiHotel.nameZh?.trim() && taxiHotel.addressZh?.trim()) && <small className="taxi-hint">Consiglio: incolla nome e indirizzo in cinese nella sezione Hotel, così il tassista li legge senza dubbi.</small>}
-          {(taxiHotel.nameZh?.trim() || taxiHotel.addressZh?.trim()) && <div className="taxi-latin"><b>{taxiHotel.name}</b><span>{taxiHotel.address}</span></div>}
-          <button className="taxi-close" onClick={() => setTaxiHotelId(null)}>Chiudi</button>
+          <p className="taxi-kicker">{taxiInfo.kind === "hotel" ? "请送我们到这家酒店，谢谢！" : "请问，这个地方怎么走？谢谢！"}</p>
+          <small className="taxi-kicker-it">{taxiInfo.kind === "hotel" ? "«Per favore, ci porti a questo hotel. Grazie!»" : "«Scusi, come si arriva a questo posto? Grazie!»"}</small>
+          <h2>{taxiInfo.titleZh?.trim() || taxiInfo.title}</h2>
+          <p className="taxi-address">{taxiInfo.subtitleZh?.trim() || taxiInfo.subtitle || ""}</p>
+          {!taxiInfo.titleZh?.trim() && <small className="taxi-hint">Consiglio: aggiungi il nome in cinese (c&apos;è il link «Traduci»), così chi legge non ha dubbi.</small>}
+          {(taxiInfo.titleZh?.trim() || taxiInfo.subtitleZh?.trim()) && <div className="taxi-latin"><b>{taxiInfo.title}</b><span>{taxiInfo.subtitle}</span></div>}
+          <button className="taxi-close" onClick={() => setTaxiInfo(null)}>Chiudi</button>
         </div>
       </div>}
     </main>
