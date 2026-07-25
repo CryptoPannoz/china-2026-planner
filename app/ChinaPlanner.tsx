@@ -519,6 +519,108 @@ const SUGGESTED_STOPS: SuggestedStop[] = [
       { id: "borgo-xidi", name: "Borgo di Xidi", description: "Architettura Hui e vicoli lastricati, più quieto di Hongcun; 104 ¥/pp", price: 26, selected: false },
     ],
   },
+  {
+    id: "pingyao",
+    name: "Pingyao",
+    lat: 37.2,
+    lng: 112.176,
+    nights: 1,
+    hotelNightly: 45,
+    insertAfterId: "beijing",
+    recap: "La città murata Ming meglio conservata della Cina (UNESCO): mura intatte, le prime banche dell'800, cortili e lanterne rosse. Spezza perfettamente il viaggio Pechino → Xi'an ed è magica la sera.",
+    transport: "Treno AV da Pechino ~4h (staz. Pingyao Gucheng), poi AV per Xi'an ~3h: tappa a metà strada",
+    season: "Freddo secco (−5/5°C) ma cieli tersi e vicoli quasi vuoti; guesthouse nei cortili storici a prezzi minimi",
+    activities: [
+      { id: "pingyao-pass", name: "Biglietto unico della città antica", description: "Mura, Rishengchang (prima banca cinese) e residenze; ~125 ¥/pp, valido 3 giorni", price: 32, selected: false },
+      { id: "pingyao-qiao", name: "Cortile della famiglia Qiao", description: "La residenza di «Lanterne rosse», a 40 min di auto; ~115 ¥/pp", price: 29, selected: false },
+      { id: "pingyao-shuanglin", name: "Tempio Shuanglin", description: "Sculture in argilla dipinta uniche, a 6 km dalle mura; ~35 ¥/pp", price: 9, selected: false },
+    ],
+  },
+  {
+    id: "huashan",
+    name: "Monte Hua (Huashan)",
+    lat: 34.49,
+    lng: 110.085,
+    nights: 1,
+    hotelNightly: 55,
+    insertAfterId: "xian",
+    recap: "La montagna sacra dell'ovest: creste di granito a strapiombo, scalinate scavate nella roccia e la famosa passerella di assi sospesa nel vuoto. Fattibile anche in giornata da Xi'an (idea dal blog Zipangu).",
+    transport: "AV da Xi'an Nord a Huashan Nord in 30–40 min (~55 ¥); navetta + funivia fino in cresta",
+    season: "In cresta freddo e vento (−5°C) ma cieli limpidi e sentieri deserti; ramponcini utili se ha nevicato",
+    activities: [
+      { id: "huashan-west-cable", name: "Funivia del Picco Ovest", description: "La salita più spettacolare; funivia ~140 ¥ + bus ~40 ¥ a tratta", price: 45, selected: false },
+      { id: "huashan-plank-walk", name: "Passerella nel vuoto (Plank Walk)", description: "Assi di legno sul precipizio, imbrago incluso; ~30 ¥/pp", price: 8, selected: false },
+      { id: "huashan-peaks-loop", name: "Anello dei cinque picchi", description: "Cresta tra picco Nord, Est e Sud; ingresso invernale ~100 ¥/pp", price: 25, selected: false },
+    ],
+  },
+  {
+    id: "luoyang",
+    name: "Luoyang & Shaolin",
+    lat: 34.62,
+    lng: 112.454,
+    nights: 2,
+    hotelNightly: 50,
+    insertAfterId: "xian",
+    recap: "Le grotte di Longmen (UNESCO) con centomila Buddha scolpiti nella roccia e il monastero Shaolin sul monte Songshan, culla del kung fu: la grande deviazione storica a est di Xi'an suggerita dal blog.",
+    transport: "AV da Xi'an Nord ~1h30 (~175 ¥); Shaolin a ~1h30 di bus/auto da Luoyang",
+    season: "Freddo secco (0–8°C), siti all'aperto senza folla; spettacoli di kung fu al coperto",
+    activities: [
+      { id: "longmen-grottoes", name: "Grotte di Longmen", description: "100.000 statue rupestri sul fiume Yi, illuminate anche la sera; ~90 ¥/pp", price: 23, selected: false },
+      { id: "shaolin-monastery", name: "Monastero Shaolin e foresta di pagode", description: "Spettacolo di kung fu incluso nel biglietto; ~80 ¥/pp + transfer", price: 20, selected: false },
+      { id: "white-horse-temple", name: "Tempio del Cavallo Bianco", description: "Il primo tempio buddhista della Cina (68 d.C.); ~35 ¥/pp", price: 9, selected: false },
+    ],
+  },
+  {
+    id: "wudangshan",
+    name: "Wudangshan",
+    lat: 32.4,
+    lng: 111.004,
+    nights: 2,
+    hotelNightly: 60,
+    insertAfterId: "xian",
+    recap: "La montagna del tai chi: monasteri taoisti UNESCO arroccati tra le nubi e la Vetta d'Oro. Il blog la segnala come nuova opzione: dal 30 giugno 2026 l'alta velocità Xi'an–Wuhan la mette a ~2h da Xi'an.",
+    transport: "Nuova AV Xi'an → Wudangshan ~2h (linea aperta a giugno 2026); navetta interna al parco",
+    season: "Freddo (0–10°C) e possibile neve sui gradini; con la nebbia l'atmosfera è ancora più mistica",
+    activities: [
+      { id: "wudang-golden-summit", name: "Vetta d'Oro (Jinding)", description: "Ingresso+bus ~230 ¥ + funivia ~90 ¥; tempio dorato a 1.612 m", price: 60, selected: false },
+      { id: "wudang-zixiao", name: "Palazzo delle Nubi Purpuree", description: "Il complesso taoista meglio conservato, ~15 ¥ extra", price: 4, selected: false },
+      { id: "wudang-taichi", name: "Lezione di tai chi", description: "1–2h con maestro locale nelle scuole ai piedi del monte; ~150 ¥/pp", price: 38, selected: false },
+    ],
+  },
+  {
+    id: "qingcheng-dujiangyan",
+    name: "Qingchengshan & Dujiangyan",
+    lat: 30.9,
+    lng: 103.605,
+    nights: 1,
+    hotelNightly: 55,
+    insertAfterId: "chengdu",
+    recap: "Il monte taoista Qingcheng e l'antico sistema di irrigazione di Dujiangyan (entrambi UNESCO) a mezz'ora di treno da Chengdu: boschi sempreverdi, templi e ponti sospesi. Perfetta anche in giornata senza spostare i bagagli.",
+    transport: "AV da Chengdu ~30–50 min (~15–25 ¥ a tratta); si può fare A/R in giornata",
+    season: "Fresco e umido (5–12°C) ma il bosco resta verde; pochissimi visitatori",
+    activities: [
+      { id: "qingcheng-front", name: "Monte Qingcheng (versante anteriore)", description: "Templi taoisti nel bosco; ingresso ~80 ¥ + funivia ~35 ¥", price: 29, selected: false },
+      { id: "dujiangyan-anlan", name: "Dujiangyan e ponte sospeso Anlan", description: "Capolavoro idraulico del 256 a.C. ancora in funzione; ~80 ¥/pp", price: 20, selected: false },
+      { id: "dujiangyan-panda", name: "Base panda di Dujiangyan", description: "Molto più tranquilla di quella di Chengdu; ~55 ¥/pp", price: 14, selected: false },
+    ],
+  },
+  {
+    id: "putuoshan",
+    name: "Putuoshan",
+    lat: 30.007,
+    lng: 122.387,
+    nights: 2,
+    hotelNightly: 75,
+    insertAfterId: "suzhou",
+    recap: "L'isola sacra di Guanyin nell'arcipelago di Zhoushan: templi in riva al mare, spiagge e la statua alta 33 m. È la montagna buddhista «sul mare» vicina a Shanghai citata dal blog.",
+    transport: "AV Suzhou/Shanghai → Ningbo ~1h30, poi bus + traghetto (~2h); il vento forte può fermare i traghetti",
+    season: "Clima costiero mite (5–12°C); nei feriali d'inverno pellegrini e turisti pochissimi",
+    activities: [
+      { id: "putuo-puji", name: "Tempio Puji e isola a piedi", description: "Ingresso isola ~140 ¥ + tempio ~5 ¥; sentieri costieri tra i templi", price: 37, selected: false },
+      { id: "putuo-guanyin", name: "Statua di Nanhai Guanyin", description: "La Guanyin dorata di 33 m sul promontorio; ~6 ¥/pp", price: 2, selected: false },
+      { id: "putuo-fanyin", name: "Grotta di Fanyin", description: "Tempio sospeso sulla scogliera dove «si sente la voce del mare»; ~5 ¥", price: 2, selected: false },
+    ],
+  },
 ];
 
 // Nomi in cinese di città e attività: servono per chiedere indicazioni o mostrarli a un tassista.
@@ -540,6 +642,12 @@ const STOP_ZH: Record<string, string> = {
   xiamen: "厦门",
   hangzhou: "杭州",
   huangshan: "黄山",
+  pingyao: "平遥古城",
+  huashan: "华山",
+  luoyang: "洛阳",
+  wudangshan: "武当山",
+  "qingcheng-dujiangyan": "青城山·都江堰",
+  putuoshan: "普陀山",
 };
 
 const ACTIVITY_ZH: Record<string, string> = {
@@ -616,6 +724,24 @@ const ACTIVITY_ZH: Record<string, string> = {
   "vetta-huangshan": "黄山",
   "borgo-hongcun": "宏村",
   "borgo-xidi": "西递",
+  "pingyao-pass": "平遥古城通票",
+  "pingyao-qiao": "乔家大院",
+  "pingyao-shuanglin": "双林寺",
+  "huashan-west-cable": "华山西峰索道",
+  "huashan-plank-walk": "长空栈道",
+  "huashan-peaks-loop": "华山五峰",
+  "longmen-grottoes": "龙门石窟",
+  "shaolin-monastery": "少林寺",
+  "white-horse-temple": "白马寺",
+  "wudang-golden-summit": "武当山金顶",
+  "wudang-zixiao": "紫霄宫",
+  "wudang-taichi": "武当太极",
+  "qingcheng-front": "青城山前山",
+  "dujiangyan-anlan": "都江堰·安澜索桥",
+  "dujiangyan-panda": "都江堰熊猫谷",
+  "putuo-puji": "普济禅寺",
+  "putuo-guanyin": "南海观音",
+  "putuo-fanyin": "梵音洞",
 };
 
 function enrichStopsZh(stops: Stop[]): Stop[] {
@@ -714,9 +840,15 @@ function normalizePlanData(value: unknown): PlanData | null {
         .sort((left, right) => `${left.date}-${left.startTime}`.localeCompare(`${right.date}-${right.startTime}`))
     : normalizedSchedule;
   const savedHotels = Array.isArray(data.hotelStays) ? data.hotelStays : [];
-  const hotelStays = needsItineraryRestore
+  const mergedHotels = needsItineraryRestore
     ? mergeById(makeDefaultHotelStays(stops), savedHotels)
     : savedHotels;
+  // Ogni destinazione deve avere il suo blocco hotel: se manca, ne aggiungiamo uno "da prenotare" con le date della tappa.
+  const existingHotelIds = new Set(mergedHotels.map((stay) => stay.id));
+  const hotelStays = [
+    ...mergedHotels,
+    ...makeDefaultHotelStays(stops).filter((defaultStay) => !existingHotelIds.has(defaultStay.id) && !mergedHotels.some((stay) => stay.stopId === defaultStay.stopId)),
+  ];
 
   const stopsZh = enrichStopsZh(stops);
 
@@ -1146,6 +1278,8 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     totalPrice: 0,
     currency: "EUR" as Currency,
     bookingStatus: "da-prenotare" as HotelStay["bookingStatus"],
+    confirmationNumber: "",
+    paidBy: undefined as Payer | undefined,
     bookingUrl: "",
     mapUrl: "",
     notes: "",
@@ -1582,9 +1716,13 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     };
     const nights = hotelNights(stay);
     stay.nightlyPrice = nights > 0 ? total / nights : 0;
+    if (stay.bookingStatus !== "prenotato") {
+      delete stay.confirmationNumber;
+      delete stay.paidBy;
+    }
     setHotelStays((current) => [...current, stay]);
-    setNewHotel((current) => ({ ...current, name: "", address: "", totalPrice: 0, bookingUrl: "", mapUrl: "", notes: "" }));
-    recordChange("Hotel aggiunto", `${stay.name} · ${stay.checkInDate} → ${stay.checkOutDate}`);
+    setNewHotel((current) => ({ ...current, name: "", address: "", totalPrice: 0, bookingStatus: "da-prenotare", confirmationNumber: "", paidBy: undefined, bookingUrl: "", mapUrl: "", notes: "" }));
+    recordChange("Hotel aggiunto", `${stay.name} · ${stay.checkInDate} → ${stay.checkOutDate}${stay.bookingStatus === "prenotato" ? ` · prenotato${stay.paidBy ? `, ha pagato ${PAYER_LABELS[stay.paidBy]}` : ""}` : ""}`);
   }
 
   function addChecklistItem(event: FormEvent) {
@@ -1669,10 +1807,24 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
       return;
     }
     const stop: Stop = { id: uid("stop"), name, lat: 30, lng: 111, nights: 1, hotelNightly: 80, activities: [] };
-    setStops((current) => [...current.slice(0, -1), stop, current[current.length - 1]]);
+    const nextStops = [...stops.slice(0, -1), stop, stops[stops.length - 1]];
+    setStops(nextStops);
+    addHotelStayForStop(stop, nextStops);
     setSelectedStopId(stop.id);
     setNewStopName("");
     recordChange("Tappa aggiunta", stop.name);
+  }
+
+  // Ogni nuova destinazione parte con il suo blocco hotel "da prenotare", con le date della tappa.
+  function addHotelStayForStop(stop: Stop, nextStops: Stop[]) {
+    const defaultStay = makeDefaultHotelStays(nextStops).find((stay) => stay.stopId === stop.id);
+    if (!defaultStay) return;
+    setHotelStays((current) => {
+      if (current.some((stay) => stay.stopId === stop.id)) return current;
+      const stay = current.some((existing) => existing.id === defaultStay.id) ? { ...defaultStay, id: uid("hotel") } : defaultStay;
+      return [...current, stay];
+    });
+    recordChange("Hotel da prenotare creato", `${stop.name}: blocco hotel aggiunto automaticamente`);
   }
 
   function updateLeg(id: string, patch: Partial<Leg>) {
@@ -1870,11 +2022,11 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
       hotelNightly: suggestion.hotelNightly,
       activities: suggestion.activities.map((activity) => ({ ...activity })),
     };
-    setStops((current) => {
-      const anchorIndex = current.findIndex((item) => item.id === suggestion.insertAfterId);
-      const index = anchorIndex >= 0 ? anchorIndex + 1 : Math.max(1, current.length - 1);
-      return [...current.slice(0, index), stop, ...current.slice(index)];
-    });
+    const anchorIndex = stops.findIndex((item) => item.id === suggestion.insertAfterId);
+    const index = anchorIndex >= 0 ? anchorIndex + 1 : Math.max(1, stops.length - 1);
+    const nextStops = [...stops.slice(0, index), stop, ...stops.slice(index)];
+    setStops(nextStops);
+    addHotelStayForStop(stop, nextStops);
     setSelectedStopId(stop.id);
     recordChange("Tappa aggiunta dalle proposte", `${stop.name} · ${stop.nights} ${stop.nights === 1 ? "notte" : "notti"}`);
   }
@@ -2139,6 +2291,15 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
             <label className="wide">Indirizzo<input value={newHotel.address} onChange={(event) => setNewHotel((current) => ({ ...current, address: event.target.value }))} /></label>
             <label>Prezzo totale<span className="money-input"><input type="number" min="0" step="0.01" value={newHotel.totalPrice || ""} onChange={(event) => setNewHotel((current) => ({ ...current, totalPrice: Number(event.target.value) || 0 }))} /><select value={newHotel.currency} onChange={(event) => setNewHotel((current) => ({ ...current, currency: event.target.value as Currency }))}><option value="EUR">€</option><option value="CNY">¥</option></select></span></label>
             <label>Stato<select value={newHotel.bookingStatus} onChange={(event) => setNewHotel((current) => ({ ...current, bookingStatus: event.target.value as HotelStay["bookingStatus"] }))}><option value="da-prenotare">Da prenotare</option><option value="prenotato">Prenotato</option></select></label>
+            {newHotel.bookingStatus === "prenotato" && <>
+              <label>Numero prenotazione<input value={newHotel.confirmationNumber} placeholder="Es. codice Booking / Trip.com" onChange={(event) => setNewHotel((current) => ({ ...current, confirmationNumber: event.target.value }))} /></label>
+              <div className="hotel-payer">
+                <span>Chi ha pagato?</span>
+                <div>
+                  {(["alberto", "sofia"] as Payer[]).map((payer) => <button type="button" key={payer} className={newHotel.paidBy === payer ? `active ${payer}` : ""} onClick={() => setNewHotel((current) => ({ ...current, paidBy: current.paidBy === payer ? undefined : payer }))}>{PAYER_LABELS[payer]}</button>)}
+                </div>
+              </div>
+            </>}
             <label className="wide">Note<textarea value={newHotel.notes} onChange={(event) => setNewHotel((current) => ({ ...current, notes: event.target.value }))} /></label>
           </div>
           <button className="primary" type="submit">+ Aggiungi soggiorno</button>
