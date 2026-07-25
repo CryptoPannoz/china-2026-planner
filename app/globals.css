@@ -393,6 +393,16 @@ h3 { margin-bottom: 12px; font: 800 17px/1.15 var(--sans); letter-spacing: -.01e
 .add-checklist { padding: 0 20px 18px; display: flex; gap: 8px; }
 .add-checklist input { flex: 1; min-width: 0; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: white; font-size: 13px; }
 .notes-card textarea { width: 100%; min-height: 220px; padding: 18px 20px; border: 0; resize: vertical; background: transparent; outline: 0; }
+.link-list { padding: 8px 20px 4px; display: grid; gap: 8px; }
+.link-list .empty { margin: 6px 0 10px; }
+.link-row { display: grid; grid-template-columns: 132px minmax(0,1fr) minmax(0,1.35fr) auto auto; gap: 8px; align-items: center; }
+.link-row select, .link-row input, .add-link select, .add-link input { min-width: 0; padding: 8px 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: white; font-size: 12px; }
+.link-row a { color: var(--green); font-size: 11px; font-weight: 850; white-space: nowrap; text-decoration: none; }
+.link-invalid { color: var(--muted); font-size: 10px; font-weight: 800; }
+.add-link { padding: 10px 20px 16px; display: grid; grid-template-columns: 132px minmax(0,1fr) minmax(0,1.35fr) auto; gap: 8px; align-items: center; }
+.old-notes { border-top: 1px solid var(--line); }
+.old-notes summary { padding: 12px 20px; color: var(--muted); font-size: 11px; font-weight: 850; text-transform: uppercase; letter-spacing: .06em; cursor: pointer; }
+.old-notes textarea { width: 100%; min-height: 140px; padding: 6px 20px 18px; border: 0; resize: vertical; background: transparent; outline: 0; }
 .danger-text { padding: 7px 8px; border: 0; color: #a23f29; background: transparent; font-size: 10px; font-weight: 800; cursor: pointer; }
 .history-section { padding-bottom: 60px; }
 .history-card { max-width: 980px; }
@@ -624,6 +634,8 @@ h3 { margin-bottom: 12px; font: 800 17px/1.15 var(--sans); letter-spacing: -.01e
   .day-hotel-banner { grid-template-columns: 42px 1fr; }
   .day-hotel-dates, .day-hotel-actions { grid-column: 2; }
   .app-links-editor > div, .hotel-fields { grid-template-columns: 1fr; }
+  .link-row, .add-link { grid-template-columns: 1fr 1fr; }
+  .link-row select, .link-row input, .add-link select, .add-link input { grid-column: 1 / -1; }
   .hotel-fields label.wide { grid-column: 1; }
   .category-creator, .add-plan-footer { align-items: stretch; flex-direction: column; }
   .china-map-note { align-items: stretch; flex-direction: column; }

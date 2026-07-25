@@ -140,6 +140,13 @@ type ChecklistItem = {
   done: boolean;
 };
 
+type TripLink = {
+  id: string;
+  stopId: string;
+  label: string;
+  url: string;
+};
+
 type PlanData = {
   itineraryVersion: number;
   stops: Stop[];
@@ -148,6 +155,7 @@ type PlanData = {
   hotelStays: HotelStay[];
   checklist: boolean[];
   extraChecklist: ChecklistItem[];
+  sharedLinks: TripLink[];
   notes: string;
   cnyPerEuro: number;
   costEntries: CostEntry[];
@@ -722,6 +730,9 @@ function normalizePlanData(value: unknown): PlanData | null {
     extraChecklist: Array.isArray(data.extraChecklist)
       ? data.extraChecklist.filter((item): item is ChecklistItem => Boolean(item && typeof item === "object" && typeof (item as ChecklistItem).id === "string" && typeof (item as ChecklistItem).label === "string"))
       : [],
+    sharedLinks: Array.isArray(data.sharedLinks)
+      ? data.sharedLinks.filter((item): item is TripLink => Boolean(item && typeof item === "object" && typeof (item as TripLink).id === "string" && typeof (item as TripLink).url === "string"))
+      : [],
     notes: typeof data.notes === "string" ? data.notes : "",
     cnyPerEuro: typeof data.cnyPerEuro === "number" ? data.cnyPerEuro : 8,
     costEntries: Array.isArray(data.costEntries) ? data.costEntries : [],
@@ -1142,6 +1153,8 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
   const [checklist, setChecklist] = useState<boolean[]>(defaultChecklist.map(() => false));
   const [extraChecklist, setExtraChecklist] = useState<ChecklistItem[]>([]);
   const [newChecklistItem, setNewChecklistItem] = useState("");
+  const [sharedLinks, setSharedLinks] = useState<TripLink[]>([]);
+  const [newLink, setNewLink] = useState({ stopId: "", label: "", url: "" });
   const [notes, setNotes] = useState("");
   const [cnyPerEuro, setCnyPerEuro] = useState(8);
   const [costEntries, setCostEntries] = useState<CostEntry[]>([
@@ -1176,6 +1189,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
           setHotelStays(saved.hotelStays);
           setChecklist(saved.checklist);
           setExtraChecklist(saved.extraChecklist);
+          setSharedLinks(saved.sharedLinks);
           setNotes(saved.notes);
           setCnyPerEuro(saved.cnyPerEuro);
           setCostEntries(saved.costEntries);
@@ -1213,6 +1227,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
         setHotelStays(remotePlan.hotelStays);
         setChecklist(remotePlan.checklist);
         setExtraChecklist(remotePlan.extraChecklist);
+        setSharedLinks(remotePlan.sharedLinks);
         setNotes(remotePlan.notes);
         setCnyPerEuro(remotePlan.cnyPerEuro);
         setCostEntries(remotePlan.costEntries);
@@ -1251,6 +1266,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
         hotelStays: initialHotelStays,
         checklist: defaultChecklist.map(() => false),
         extraChecklist: [],
+        sharedLinks: [],
         notes: "",
         cnyPerEuro: 8,
         customCategories: [],
@@ -1296,6 +1312,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
       hotelStays,
       checklist,
       extraChecklist,
+      sharedLinks,
       notes,
       cnyPerEuro,
       costEntries,
@@ -1322,7 +1339,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     }, 700);
 
     return () => window.clearTimeout(timer);
-  }, [stops, legs, scheduleItems, hotelStays, checklist, extraChecklist, notes, cnyPerEuro, costEntries, expenses, customCategories, dismissedSuggestions, coverPhoto, hydrated, cloudReady]);
+  }, [stops, legs, scheduleItems, hotelStays, checklist, extraChecklist, sharedLinks, notes, cnyPerEuro, costEntries, expenses, customCategories, dismissedSuggestions, coverPhoto, hydrated, cloudReady]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -1589,6 +1606,33 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     const removed = extraChecklist.find((entry) => entry.id === id);
     setExtraChecklist((current) => current.filter((entry) => entry.id !== id));
     if (removed) recordChange("Checklist ridotta", removed.label);
+  }
+
+  function normalizeLinkUrl(value: string) {
+    const url = value.trim();
+    if (!url) return "";
+    return /^(https?:\/\/|weixin:\/\/|alipays?:\/\/)/i.test(url) ? url : `https://${url}`;
+  }
+
+  function addSharedLink(event: FormEvent) {
+    event.preventDefault();
+    const url = normalizeLinkUrl(newLink.url);
+    if (!url) return;
+    const link: TripLink = { id: uid("link"), stopId: newLink.stopId, label: newLink.label.trim(), url };
+    setSharedLinks((current) => [...current, link]);
+    setNewLink({ stopId: "", label: "", url: "" });
+    const stopName = stops.find((stop) => stop.id === link.stopId)?.name || "Tutto il viaggio";
+    recordChange("Link aggiunto", `${stopName}: ${link.label || link.url}`);
+  }
+
+  function updateSharedLink(id: string, patch: Partial<TripLink>) {
+    setSharedLinks((current) => current.map((link) => link.id === id ? { ...link, ...patch } : link));
+  }
+
+  function removeSharedLink(id: string) {
+    const removed = sharedLinks.find((link) => link.id === id);
+    setSharedLinks((current) => current.filter((link) => link.id !== id));
+    if (removed) recordChange("Link eliminato", removed.label || removed.url);
   }
 
   function removeHotelStay(id: string) {
@@ -2402,7 +2446,38 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
               <button className="primary" type="submit">+ Aggiungi</button>
             </form>
           </article>
-          <article className="card notes-card"><div className="card-head"><div><p className="eyebrow">Salvate nel database condiviso</p><h2>Note condivise</h2></div></div><textarea value={notes} onChange={(event) => setNotes(event.target.value)} onBlur={() => recordChange("Note condivise aggiornate", "Ha modificato le note generali del viaggio")} placeholder="Hotel preferiti, ristoranti, idee e cose da ricordare…" /></article>
+          <article className="card links-card">
+            <div className="card-head"><div><p className="eyebrow">Prenotazioni, biglietti e pagine da ricordare</p><h2>Link</h2></div><span>{sharedLinks.length} {sharedLinks.length === 1 ? "salvato" : "salvati"}</span></div>
+            <div className="link-list">
+              {sharedLinks.length === 0 && <p className="empty">Nessun link salvato. Aggiungi qui conferme di prenotazione, biglietti e pagine utili, città per città.</p>}
+              {sharedLinks.map((link) => {
+                const openUrl = safeExternalLink(link.url);
+                return <div className="link-row" key={link.id}>
+                  <select aria-label="Città del link" value={link.stopId} onChange={(event) => { updateSharedLink(link.id, { stopId: event.target.value }); recordChange("Link spostato", `${link.label || link.url} → ${stops.find((stop) => stop.id === event.target.value)?.name || "Tutto il viaggio"}`); }}>
+                    <option value="">Tutto il viaggio</option>
+                    {stops.map((stop) => <option key={stop.id} value={stop.id}>{stop.name}</option>)}
+                  </select>
+                  <input aria-label="Descrizione link" value={link.label} placeholder="Es. Conferma hotel, biglietti…" onChange={(event) => updateSharedLink(link.id, { label: event.target.value })} onBlur={(event) => { if (event.target.value.trim()) recordChange("Link rinominato", event.target.value.trim()); }} />
+                  <input aria-label="Indirizzo del link" value={link.url} placeholder="https://…" onChange={(event) => updateSharedLink(link.id, { url: event.target.value })} onBlur={(event) => { const url = normalizeLinkUrl(event.target.value); if (url !== link.url) updateSharedLink(link.id, { url }); }} />
+                  {openUrl ? <a href={openUrl} target="_blank" rel="noreferrer">Apri ↗</a> : <span className="link-invalid">Link?</span>}
+                  <button className="danger-text" onClick={() => removeSharedLink(link.id)}>Togli</button>
+                </div>;
+              })}
+            </div>
+            <form className="add-link" onSubmit={addSharedLink}>
+              <select aria-label="Città del nuovo link" value={newLink.stopId} onChange={(event) => setNewLink((current) => ({ ...current, stopId: event.target.value }))}>
+                <option value="">Tutto il viaggio</option>
+                {stops.map((stop) => <option key={stop.id} value={stop.id}>{stop.name}</option>)}
+              </select>
+              <input aria-label="Descrizione nuovo link" value={newLink.label} placeholder="Es. Conferma hotel Pechino" onChange={(event) => setNewLink((current) => ({ ...current, label: event.target.value }))} />
+              <input required aria-label="Indirizzo nuovo link" value={newLink.url} placeholder="Incolla qui il link" onChange={(event) => setNewLink((current) => ({ ...current, url: event.target.value }))} />
+              <button className="primary" type="submit">+ Aggiungi</button>
+            </form>
+            <details className="old-notes">
+              <summary>Note condivise{notes.trim() ? " · c'è del testo salvato" : ""}</summary>
+              <textarea value={notes} onChange={(event) => setNotes(event.target.value)} onBlur={() => recordChange("Note condivise aggiornate", "Ha modificato le note generali del viaggio")} placeholder="Hotel preferiti, ristoranti, idee e cose da ricordare…" />
+            </details>
+          </article>
         </div>
       </section>}
 
