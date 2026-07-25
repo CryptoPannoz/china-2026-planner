@@ -495,6 +495,7 @@ h3 { margin-bottom: 12px; font: 800 17px/1.15 var(--sans); letter-spacing: -.01e
 .day-clou-chips button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border: 1px solid var(--line); border-radius: 999px; background: white; font-size: 11px; font-weight: 700; cursor: pointer; }
 .day-clou-chips button:hover:not(:disabled) { border-color: #9bb7a5; background: var(--green-soft); }
 .day-clou-chips button.done { color: var(--muted); background: #f0f6f1; border-color: #c9dccf; cursor: default; }
+.day-clou-chips button.picked:not(.done) { border-color: var(--orange); background: var(--orange-soft); }
 .day-clou-chips button i { font-style: normal; font-weight: 900; color: var(--green); }
 .day-clou-chips button em { color: var(--muted); font-size: 10px; font-style: normal; font-weight: 800; }
 

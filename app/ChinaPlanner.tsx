@@ -808,6 +808,25 @@ const initialLegs: Leg[] = [
   { id: "suzhou-shanghai", fromId: "suzhou", toId: "shanghai", mode: "🚄 Alta velocità", duration: "25–40 min", cost: 20, included: true, note: "Preferire stazioni centrali" },
 ];
 
+// Base di trasferimenti noti (costo per 2, sempre modificabile): usata quando due tappe diventano
+// consecutive e non c'è ancora una tratta salvata, al posto del generico "Trasporto da definire".
+const KNOWN_LEG_PRESETS: Record<string, { mode: string; duration: string; cost: number; note: string }> = {
+  "beijing-wuzhen": { mode: "🚄 AV + taxi", duration: "5h30–6h", cost: 150, note: "Pechino Sud → Tongxiang in AV, poi ~20 min di taxi per Wuzhen" },
+  "beijing-suzhou": { mode: "🚄 Alta velocità", duration: "4h–4h30", cost: 140, note: "Pechino Sud → Suzhou / Suzhou Nord" },
+  "beijing-shanghai": { mode: "🚄 Alta velocità", duration: "4h30", cost: 150, note: "Pechino Sud → Shanghai Hongqiao" },
+  "beijing-hangzhou": { mode: "🚄 Alta velocità", duration: "4h30–5h", cost: 155, note: "Pechino Sud → Hangzhou Est" },
+  "beijing-pingyao": { mode: "🚄 Alta velocità", duration: "~4h", cost: 100, note: "Pechino → Pingyao Gucheng" },
+  "pingyao-xian": { mode: "🚄 Alta velocità", duration: "~3h", cost: 80, note: "Pingyao Gucheng → Xi'an Nord" },
+  "xian-huashan": { mode: "🚄 Alta velocità", duration: "30–40 min", cost: 30, note: "Xi'an Nord → Huashan Nord" },
+  "xian-luoyang": { mode: "🚄 Alta velocità", duration: "~1h30", cost: 50, note: "Xi'an Nord → Luoyang Longmen" },
+  "xian-wudangshan": { mode: "🚄 Alta velocità", duration: "~2h", cost: 60, note: "Nuova linea AV Xi'an–Wuhan (aperta a giugno 2026)" },
+  "chengdu-qingcheng-dujiangyan": { mode: "🚄 Alta velocità", duration: "30–50 min", cost: 15, note: "Chengdu → Qingchengshan / Dujiangyan, anche A/R in giornata" },
+  "wuzhen-hangzhou": { mode: "🚌 Bus diretto", duration: "~1h", cost: 20, note: "Wuzhen → Hangzhou, bus frequenti" },
+  "wuzhen-shanghai": { mode: "🚌 Bus / Didi", duration: "1h30–2h", cost: 60, note: "Wuzhen → Shanghai; in alternativa taxi per Tongxiang + AV" },
+  "hangzhou-suzhou": { mode: "🚄 Alta velocità", duration: "~1h30", cost: 45, note: "Hangzhou Est → Suzhou" },
+  "suzhou-putuoshan": { mode: "🚄 AV + bus + traghetto", duration: "~4h", cost: 90, note: "Suzhou → Ningbo in AV, poi bus e traghetto per Putuoshan" },
+};
+
 const initialSchedule: ScheduleItem[] = [
   { id: "d01-arrival", date: "2026-11-17", stopId: "beijing", startTime: "12:25", endTime: "15:30", name: "Arrivo a Pechino e transfer", category: "trasporto", location: "PEK → hotel", notes: "Ritiro bagagli e check-in. Non fissare attività impegnative.", price: 0, bookingStatus: "prenotato" },
   { id: "d01-evening", date: "2026-11-17", stopId: "beijing", startTime: "17:30", endTime: "20:00", name: "Passeggiata nei hutong e cena", category: "cibo", location: "Shichahai / Gulou", notes: "Serata leggera per assorbire il fuso orario.", price: 35, bookingStatus: "non-serve" },
@@ -874,10 +893,15 @@ function normalizePlanData(value: unknown): PlanData | null {
     ? mergeById(initialSchedule.map(normalizeScheduleItem), normalizedSchedule)
         .sort((left, right) => `${left.date}-${left.startTime}`.localeCompare(`${right.date}-${right.startTime}`))
     : normalizedSchedule;
+  // Pulizia: le tappe eliminate non devono lasciare avanzi in agenda o tra gli hotel.
+  // Teniamo solo ciò che è già prenotato, così non sparisce nulla di pagato senza conferma.
+  const stopIdSet = new Set(stops.map((stop) => stop.id));
+  const scheduleItemsClean = scheduleItems.filter((item) => stopIdSet.has(item.stopId) || item.bookingStatus === "prenotato");
+
   const savedHotels = Array.isArray(data.hotelStays) ? data.hotelStays : [];
-  const mergedHotels = needsItineraryRestore
+  const mergedHotels = (needsItineraryRestore
     ? mergeById(makeDefaultHotelStays(stops), savedHotels)
-    : savedHotels;
+    : savedHotels).filter((stay) => stopIdSet.has(stay.stopId) || stay.bookingStatus === "prenotato");
   // Ogni destinazione deve avere il suo blocco hotel: se manca, ne aggiungiamo uno "da prenotare" con le date della tappa.
   const existingHotelIds = new Set(mergedHotels.map((stay) => stay.id));
   const hotelStays = [
@@ -891,7 +915,7 @@ function normalizePlanData(value: unknown): PlanData | null {
     itineraryVersion: ITINERARY_SCHEMA_VERSION,
     stops: stopsZh,
     legs,
-    scheduleItems: enrichScheduleZh(scheduleItems, stopsZh),
+    scheduleItems: enrichScheduleZh(scheduleItemsClean, stopsZh),
     hotelStays,
     checklist: Array.isArray(data.checklist) && data.checklist.length === defaultChecklist.length ? data.checklist : defaultChecklist.map(() => false),
     extraChecklist: Array.isArray(data.extraChecklist)
@@ -1543,15 +1567,16 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
   const normalizedLegs = useMemo(() => {
     return stops.slice(0, -1).map((stop, index) => {
       const next = stops[index + 1];
+      const preset = KNOWN_LEG_PRESETS[`${stop.id}-${next.id}`];
       return legs.find((leg) => leg.fromId === stop.id && leg.toId === next.id) ?? {
         id: `${stop.id}-${next.id}`,
         fromId: stop.id,
         toId: next.id,
-        mode: "Trasporto da definire",
-        duration: "Da verificare",
-        cost: 0,
+        mode: preset?.mode ?? "Trasporto da definire",
+        duration: preset?.duration ?? "Da verificare",
+        cost: preset?.cost ?? 0,
         included: true,
-        note: "Inserisci qui la soluzione scelta",
+        note: preset?.note ?? "Inserisci qui la soluzione scelta",
       };
     });
   }, [stops, legs]);
@@ -2398,10 +2423,10 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
             {(stops.find((item) => item.id === selectedDay?.stopId)?.activities.length || 0) > 0 && <div className="day-clou">
               <span className="day-clou-label">✦ Attività clou di {selectedDay?.city}</span>
               <div className="day-clou-chips">
-                {stops.find((item) => item.id === selectedDay?.stopId)?.activities.map((activity) => {
+                {[...(stops.find((item) => item.id === selectedDay?.stopId)?.activities || [])].sort((a, b) => Number(b.selected) - Number(a.selected)).map((activity) => {
                   const scheduled = scheduleItems.some((item) => item.sourceActivityId === activity.id);
-                  return <button key={activity.id} className={scheduled ? "done" : ""} disabled={scheduled} title={scheduled ? "Già in agenda" : `Aggiungi a questa giornata · ${activity.description}`} onClick={() => scheduleClouOnSelectedDay(activity)}>
-                    <i>{scheduled ? "✓" : "+"}</i>{activity.name}{activity.price > 0 && <em>{formatCost(activity.price, activity.currency)}</em>}
+                  return <button key={activity.id} className={`${scheduled ? "done" : ""} ${activity.selected ? "picked" : ""}`} disabled={scheduled} title={scheduled ? "Già in agenda" : `Aggiungi a questa giornata · ${activity.description}`} onClick={() => scheduleClouOnSelectedDay(activity)}>
+                    <i>{scheduled ? "✓" : "+"}</i>{activity.selected && !scheduled ? "✦ " : ""}{activity.name}{activity.price > 0 && <em>{formatCost(activity.price, activity.currency)}</em>}
                   </button>;
                 })}
               </div>
