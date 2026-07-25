@@ -621,6 +621,41 @@ const SUGGESTED_STOPS: SuggestedStop[] = [
       { id: "putuo-fanyin", name: "Grotta di Fanyin", description: "Tempio sospeso sulla scogliera dove «si sente la voce del mare»; ~5 ¥", price: 2, selected: false },
     ],
   },
+  {
+    id: "wuzhen",
+    name: "Wuzhen",
+    lat: 30.7462,
+    lng: 120.4943,
+    nights: 1,
+    hotelNightly: 100,
+    insertAfterId: "fenghuang",
+    recap: "Il borgo d'acqua più scenografico della Cina: canali illuminati la sera, spettacoli folk e la magia di dormire dentro l'area scenica di Xizha. Se l'avete tolta dal piano, da qui la rimettete con un click.",
+    transport: "Da Fenghuang treni via Changsha (7–9h, tratta delicata); da Hangzhou bus diretto ~1h",
+    season: "Freddo umido (2–10°C) ma canali senza folla; luci accese dal tramonto (~17)",
+    activities: [
+      { id: "xizha", name: "Xizha illuminata di sera", description: "150 ¥/pp; luci dal tramonto (~17 a dicembre); dormire nel borgo è il top", price: 38, selected: false },
+      { id: "canal-night-boat", name: "Barca notturna sui canali", description: "Privata ~480 ¥ fino a 8 posti; condivisa 60 ¥/pp", price: 60, selected: false },
+      { id: "dongzha-morning", name: "Dongzha al mattino", description: "110 ¥/pp; conviene il combinato Xizha+Dongzha a 190 ¥; case-museo", price: 28, selected: false },
+    ],
+  },
+  {
+    id: "suzhou",
+    name: "Suzhou",
+    lat: 31.2989,
+    lng: 120.5853,
+    nights: 2,
+    hotelNightly: 75,
+    insertAfterId: "wuzhen",
+    recap: "La «Venezia d'Oriente» dei giardini classici UNESCO, dei canali e di Pingjiang Road: il blog Zipangu consiglia almeno due giorni pieni. Attività e prezzi già pronti se volete rimetterla nel piano.",
+    transport: "AV per Shanghai in 25–40 min (~20 €); da Wuzhen ~1h30 di Didi o bus, da Hangzhou AV ~1h30",
+    season: "Freddo secco (0–10°C), giardini quieti; alcuni show serali sospesi d'inverno",
+    activities: [
+      { id: "humble-garden", name: "Giardino dell’Umile Amministratore", description: "70 ¥/pp bassa stagione; prenotare online con passaporto, chiude alle 17", price: 18, selected: false },
+      { id: "pingjiang-road", name: "Pingjiang Road", description: "Gratis; canale storico, case da tè e negozi, perfetta nel tardo pomeriggio", price: 0, selected: false },
+      { id: "suzhou-museum", name: "Museo di Suzhou (I.M. Pei)", description: "Gratuito; prenotazione WeChat 7 gg prima con passaporto; chiuso lunedì", price: 0, selected: false },
+      { id: "tiger-hill", name: "Tiger Hill e pagoda pendente", description: "60 ¥/pp a dicembre; simbolo di Suzhou, 2–3 ore con il parco", price: 15, selected: false },
+    ],
+  },
 ];
 
 // Nomi in cinese di città e attività: servono per chiedere indicazioni o mostrarli a un tassista.
