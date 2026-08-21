@@ -216,10 +216,20 @@ test("include la nuova copertina fotografica", async () => {
 test("ripristina una sola volta l’itinerario completo nei piani già salvati", async () => {
   const planner = await source("app/ChinaPlanner.tsx");
 
-  assert.match(planner, /ITINERARY_SCHEMA_VERSION = 2/);
+  assert.match(planner, /ITINERARY_SCHEMA_VERSION = 3/);
+  assert.match(planner, /FULL_RESTORE_VERSION = 2/);
   assert.match(planner, /mergeStopsWithDefaults/);
   assert.match(planner, /mergeById\(initialSchedule\.map\(normalizeScheduleItem\), normalizedSchedule\)/);
-  assert.match(planner, /action: "Itinerario ripristinato"/);
+  assert.match(planner, /"Itinerario ripristinato"/);
+});
+
+test("reinserisce Chengdu dopo Xi’an nei piani salvati che l’hanno persa", async () => {
+  const planner = await source("app/ChinaPlanner.tsx");
+
+  assert.match(planner, /ensureStopAfter\("chengdu", "xian"/);
+  assert.match(planner, /id: "xian-chengdu", fromId: "xian", toId: "chengdu"/);
+  assert.match(planner, /id: "chengdu-kunming", fromId: "chengdu", toId: "kunming"/);
+  assert.match(planner, /Chengdu reinserita come tappa 3/);
   assert.match(planner, /id: "d01-arrival"/);
   assert.match(planner, /id: "d17-tower"/);
   assert.match(planner, /id: "beijing"/);

@@ -213,7 +213,8 @@ const DEPARTURE_DATE = new Date("2026-12-04T00:00:00");
 const TRIP_NIGHTS = Math.round((DEPARTURE_DATE.getTime() - ARRIVAL_DATE.getTime()) / 86_400_000);
 const FLIGHTS_COST = 1384.44;
 const PLAN_STORAGE_KEY = "china-planner-v2";
-const ITINERARY_SCHEMA_VERSION = 2;
+const ITINERARY_SCHEMA_VERSION = 3;
+const FULL_RESTORE_VERSION = 2;
 const BUILT_IN_CATEGORIES = [
   { value: "visita", label: "Visita" },
   { value: "cibo", label: "Cibo" },
@@ -883,16 +884,21 @@ function normalizePlanData(value: unknown): PlanData | null {
   const data = value as Partial<PlanData>;
   if (!Array.isArray(data.stops) || !Array.isArray(data.legs) || !Array.isArray(data.scheduleItems)) return null;
 
-  const needsItineraryRestore = (data.itineraryVersion || 0) < ITINERARY_SCHEMA_VERSION;
+  const savedVersion = data.itineraryVersion || 0;
+  const needsItineraryRestore = savedVersion < FULL_RESTORE_VERSION;
   const normalizedSchedule = data.scheduleItems
     .map(normalizeScheduleItem)
     .filter((item) => scheduleKind(item) !== "hotel");
-  const stops = needsItineraryRestore ? mergeStopsWithDefaults(data.stops) : data.stops;
-  const legs = needsItineraryRestore ? mergeById(initialLegs, data.legs) : data.legs;
-  const scheduleItems = needsItineraryRestore
+  let stops = needsItineraryRestore ? mergeStopsWithDefaults(data.stops) : data.stops;
+  let legs = needsItineraryRestore ? mergeById(initialLegs, data.legs) : data.legs;
+  let scheduleItems = needsItineraryRestore
     ? mergeById(initialSchedule.map(normalizeScheduleItem), normalizedSchedule)
         .sort((left, right) => `${left.date}-${left.startTime}`.localeCompare(`${right.date}-${right.startTime}`))
     : normalizedSchedule;
+  if (savedVersion < ITINERARY_SCHEMA_VERSION) {
+    // v3: Chengdu torna come tappa 3, subito dopo Xi’an (il blocco hotel viene creato sotto come per ogni tappa).
+    ({ stops, legs, scheduleItems } = ensureStopAfter("chengdu", "xian", { stops, legs, scheduleItems }));
+  }
   // Pulizia: le tappe eliminate non devono lasciare avanzi in agenda o tra gli hotel.
   // Teniamo solo ciò che è già prenotato, così non sparisce nulla di pagato senza conferma.
   const stopIdSet = new Set(stops.map((stop) => stop.id));
@@ -941,6 +947,30 @@ function mergeById<T extends { id: string }>(defaults: T[], saved: T[]) {
     ...defaults.map((item) => savedById.get(item.id) || item),
     ...saved.filter((item) => !defaultIds.has(item.id)),
   ];
+}
+
+type ItineraryParts = Pick<PlanData, "stops" | "legs" | "scheduleItems">;
+
+/** Reinserisce una tappa di default (se manca) subito dopo un'altra, con le sue tratte e la sua agenda. */
+function ensureStopAfter(stopId: string, afterId: string, parts: ItineraryParts): ItineraryParts {
+  if (parts.stops.some((stop) => stop.id === stopId)) return parts;
+  const defaultStop = initialStops.find((stop) => stop.id === stopId);
+  if (!defaultStop) return parts;
+
+  const afterIndex = parts.stops.findIndex((stop) => stop.id === afterId);
+  const insertAt = afterIndex >= 0 ? afterIndex + 1 : Math.min(2, parts.stops.length);
+  const stops = [...parts.stops.slice(0, insertAt), defaultStop, ...parts.stops.slice(insertAt)];
+
+  const legIds = new Set(parts.legs.map((leg) => leg.id));
+  const legs = [...parts.legs, ...initialLegs.filter((leg) => (leg.fromId === stopId || leg.toId === stopId) && !legIds.has(leg.id))];
+
+  const scheduleIds = new Set(parts.scheduleItems.map((item) => item.id));
+  const scheduleItems = [
+    ...parts.scheduleItems,
+    ...initialSchedule.map(normalizeScheduleItem).filter((item) => item.stopId === stopId && !scheduleIds.has(item.id)),
+  ].sort((left, right) => `${left.date}-${left.startTime}`.localeCompare(`${right.date}-${right.startTime}`));
+
+  return { stops, legs, scheduleItems };
 }
 
 function mergeStopsWithDefaults(savedStops: Stop[]) {
@@ -1439,8 +1469,10 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
             await addDoc(collection(db, "travel-plans", "china-2026", "change-log"), {
               authorEmail: currentUser.email || "",
               authorName: currentUser.displayName || currentUser.email || "Utente",
-              action: "Itinerario ripristinato",
-              detail: "Recuperate tutte le tappe, le giornate e le attività del piano originale.",
+              action: (remoteData.itineraryVersion || 0) < FULL_RESTORE_VERSION ? "Itinerario ripristinato" : "Tappa aggiunta",
+              detail: (remoteData.itineraryVersion || 0) < FULL_RESTORE_VERSION
+                ? "Recuperate tutte le tappe, le giornate e le attività del piano originale."
+                : "Chengdu reinserita come tappa 3, dopo Xi’an, con treno, hotel e agenda di default.",
               createdAt: serverTimestamp(),
             });
             setLastSavedAt(new Date());
