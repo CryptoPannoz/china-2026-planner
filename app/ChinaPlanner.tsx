@@ -111,6 +111,26 @@ type Leg = {
   currency?: Currency;
   included: boolean;
   note: string;
+  departureTime?: string;
+  arrivalTime?: string;
+  fromStation?: string;
+  toStation?: string;
+  serviceNumber?: string;
+  bookingStatus?: "da-prenotare" | "prenotato";
+  bookingRef?: string;
+  ticketUrl?: string;
+  paidBy?: Payer;
+};
+
+type HourBlock = {
+  id: string;
+  kind: "activity" | "transport" | "leg";
+  start: string;
+  end: string;
+  title: string;
+  subtitle?: string;
+  booked?: boolean;
+  conflict?: boolean;
 };
 
 type CostEntry = {
@@ -1113,6 +1133,70 @@ function dateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function slugifyStopName(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "tappa";
+}
+
+// Geocoding leggero via OpenStreetMap (serve solo in fase di pianificazione, da casa).
+async function geocodeCity(name: string): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=cn&q=${encodeURIComponent(name)}`, { headers: { Accept: "application/json" } });
+    if (!response.ok) return null;
+    const results = await response.json() as Array<{ lat: string; lon: string }>;
+    if (!results[0]) return null;
+    const lat = Number(results[0].lat);
+    const lng = Number(results[0].lon);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  } catch {
+    return null;
+  }
+}
+
+function timeToMinutes(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  return (hours || 0) * 60 + (minutes || 0);
+}
+
+function minutesToTime(value: number) {
+  const clamped = Math.max(0, Math.min(23 * 60 + 55, value));
+  return `${String(Math.floor(clamped / 60)).padStart(2, "0")}:${String(clamped % 60).padStart(2, "0")}`;
+}
+
+const HOUR_GRID_START = 6;
+const HOUR_GRID_END = 24;
+const HOUR_GRID_PX = 54;
+
+function HourGrid({ blocks, onPickTime, onOpenBlock }: { blocks: HourBlock[]; onPickTime: (time: string) => void; onOpenBlock: (block: HourBlock) => void }) {
+  const sorted = [...blocks].sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+  const laneEnds: number[] = [];
+  const lanes = sorted.map((block) => {
+    const start = timeToMinutes(block.start);
+    let lane = laneEnds.findIndex((end) => end <= start);
+    if (lane < 0) { lane = laneEnds.length; laneEnds.push(0); }
+    laneEnds[lane] = Math.max(timeToMinutes(block.end), start + 30);
+    return lane;
+  });
+  const laneCount = Math.max(1, laneEnds.length);
+  const gridStart = HOUR_GRID_START * 60;
+  return <div className="hour-grid" style={{ height: (HOUR_GRID_END - HOUR_GRID_START) * HOUR_GRID_PX }}>
+    {Array.from({ length: HOUR_GRID_END - HOUR_GRID_START }, (_, index) => HOUR_GRID_START + index).map((hour) => (
+      <button type="button" key={hour} className="hour-row" style={{ top: (hour - HOUR_GRID_START) * HOUR_GRID_PX, height: HOUR_GRID_PX }} onClick={() => onPickTime(`${String(hour).padStart(2, "0")}:00`)} title={`Nuovo blocco alle ${hour}:00`}>
+        <span>{String(hour).padStart(2, "0")}:00</span>
+      </button>
+    ))}
+    {sorted.map((block, index) => {
+      const start = Math.max(timeToMinutes(block.start), gridStart);
+      const end = Math.max(timeToMinutes(block.end), start + 30);
+      const top = (start - gridStart) / 60 * HOUR_GRID_PX;
+      const height = Math.max(26, (end - start) / 60 * HOUR_GRID_PX - 3);
+      return <button type="button" key={block.id} className={`hour-block kind-${block.kind} ${block.booked ? "booked" : ""} ${block.conflict ? "conflict" : ""}`} style={{ top, height, left: `calc(58px + ${lanes[index]} * (100% - 58px) / ${laneCount})`, width: `calc((100% - 58px) / ${laneCount} - 6px)` }} onClick={() => onOpenBlock(block)}>
+        <b>{block.title}</b>
+        <small>{block.start}–{block.end}{block.subtitle ? ` · ${block.subtitle}` : ""}</small>
+      </button>;
+    })}
+  </div>;
+}
+
 function uid(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -1343,6 +1427,9 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
   const [selectedDate, setSelectedDate] = useState("2026-11-17");
   const [selectedStopId, setSelectedStopId] = useState("beijing");
   const [newStopName, setNewStopName] = useState("");
+  const [newStopOptions, setNewStopOptions] = useState({ nights: 1, afterId: "", donorId: "" });
+  const [addingStop, setAddingStop] = useState(false);
+  const [agendaView, setAgendaView] = useState<"list" | "hours">("list");
   const [newScheduleItem, setNewScheduleItem] = useState({
     kind: "activity" as ScheduleKind,
     startTime: "09:00",
@@ -1613,6 +1700,13 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     });
   }, [stops, legs]);
 
+  // Ogni tratta parte il giorno in cui si lascia la città di partenza.
+  const legDateFor = (leg: Leg) => {
+    const entry = timeline.find((item) => item.stop.id === leg.fromId);
+    return entry ? dateKey(entry.departure) : "";
+  };
+  const bookedLegsCount = normalizedLegs.filter((leg) => leg.included && leg.bookingStatus === "prenotato").length;
+
   const selectedStop = stops.find((stop) => stop.id === selectedStopId) ?? stops[0];
   const usedNights = stops.reduce((sum, stop) => sum + stop.nights, 0);
   const remainingNights = TRIP_NIGHTS - usedNights;
@@ -1670,6 +1764,29 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
   });
   const dayCost = selectedDayItems.reduce((sum, item) => sum + toEuro(item.price, item.currency), 0);
   const bookingCount = scheduleItems.filter((item) => item.bookingStatus === "da-prenotare").length;
+  const selectedDayLeg = normalizedLegs.find((leg) => leg.included && legDateFor(leg) === selectedDay?.dateKey);
+  const legLabel = (leg: Leg) => `${stops.find((stop) => stop.id === leg.fromId)?.name || "?"} → ${stops.find((stop) => stop.id === leg.toId)?.name || "?"}`;
+  const dayHourBlocks: HourBlock[] = [
+    ...selectedDayItems.map((item) => ({
+      id: item.id,
+      kind: scheduleKind(item) === "transport" ? "transport" as const : "activity" as const,
+      start: item.startTime,
+      end: item.endTime,
+      title: item.name,
+      subtitle: item.price > 0 ? formatCost(item.price, item.currency) : item.location || undefined,
+      booked: item.bookingStatus === "prenotato",
+      conflict: conflictingIds.has(item.id),
+    })),
+    ...(selectedDayLeg && selectedDayLeg.departureTime ? [{
+      id: `leg-${selectedDayLeg.id}`,
+      kind: "leg" as const,
+      start: selectedDayLeg.departureTime,
+      end: selectedDayLeg.arrivalTime || minutesToTime(timeToMinutes(selectedDayLeg.departureTime) + 120),
+      title: `${selectedDayLeg.mode} ${legLabel(selectedDayLeg)}`,
+      subtitle: selectedDayLeg.serviceNumber || undefined,
+      booked: selectedDayLeg.bookingStatus === "prenotato",
+    }] : []),
+  ];
   // Consuntivo automatico: tutto ciò che è già prenotato/confermato entra nello "speso" senza doverlo registrare a mano.
   const confirmedEntries = [
     ...hotelStays.filter((stay) => stay.bookingStatus === "prenotato").map((stay) => ({
@@ -1681,6 +1798,16 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
       currency: stay.currency,
       paidBy: stay.paidBy,
       category: "hotel" as ExpenseCategory,
+    })),
+    ...normalizedLegs.filter((leg) => leg.included && leg.bookingStatus === "prenotato" && leg.cost > 0).map((leg) => ({
+      id: `conf-${leg.id}`,
+      label: legLabel(leg),
+      date: legDateFor(leg),
+      detail: `Tratta prenotata${leg.serviceNumber ? ` · ${leg.serviceNumber}` : ""}${leg.bookingRef ? ` · n. ${leg.bookingRef}` : ""}`,
+      amount: leg.cost,
+      currency: leg.currency,
+      paidBy: leg.paidBy,
+      category: "trasporti" as ExpenseCategory,
     })),
     ...scheduleItems.filter((item) => item.bookingStatus === "prenotato" && item.price > 0).map((item) => ({
       id: `conf-${item.id}`,
@@ -1710,7 +1837,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
   const budgetComparison = [
     { key: "voli", label: "Voli internazionali", note: "Già pagati · divisi a metà", planned: FLIGHTS_COST, spent: spentInCategory(["voli"]) },
     { key: "hotel", label: "Hotel", note: `${hotelStays.reduce((sum, stay) => sum + hotelNights(stay), 0)} notti · ${bookedStaysCount}/${hotelStays.length} soggiorni prenotati`, planned: hotelCost, spent: spentInCategory(["hotel"]) },
-    { key: "trasporti", label: "Trasporti", note: `${normalizedLegs.filter((leg) => leg.included).length} tratte tra le tappe`, planned: transportCost, spent: spentInCategory(["trasporti"]) },
+    { key: "trasporti", label: "Trasporti", note: `${normalizedLegs.filter((leg) => leg.included).length} tratte tra le tappe · ${bookedLegsCount} prenotate`, planned: transportCost, spent: spentInCategory(["trasporti"]) },
     { key: "attivita", label: "Attività a pagamento", note: `${budgetedActivities.length} blocchi in agenda con costo`, planned: activitiesCost, spent: spentInCategory(["attivita"]) },
     { key: "cibo-extra", label: "Cibo & extra", note: `${costEntries.length} voci pianificate`, planned: addedCostsTotal, spent: spentInCategory(["cibo", "extra"]) },
   ];
@@ -1890,21 +2017,68 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     });
   }
 
-  function addStop(event: FormEvent) {
+  // Le date dei voli sono fisse: se non ci sono notti libere, la nuova tappa le prende da un'altra
+  // (quella scelta, altrimenti le più lunghe), senza mai scendere sotto 1 notte.
+  function allocateNightsForNewStop(current: Stop[], needed: number, donorId: string, label: string) {
+    const free = TRIP_NIGHTS - current.reduce((sum, stop) => sum + stop.nights, 0);
+    if (free >= needed) return { stops: current, nights: needed, notice: "" };
+    let missing = needed - Math.max(0, free);
+    const next = current.map((stop) => ({ ...stop }));
+    const donor = next.find((stop) => stop.id === donorId && stop.nights > 1);
+    const others = next.filter((stop) => stop.nights > 1 && stop.id !== donor?.id).sort((a, b) => b.nights - a.nights);
+    const taken: string[] = [];
+    for (const stop of donor ? [donor, ...others] : others) {
+      if (missing <= 0) break;
+      const give = Math.min(stop.nights - 1, missing);
+      if (give <= 0) continue;
+      stop.nights -= give;
+      missing -= give;
+      taken.push(`${give} da ${stop.name}`);
+    }
+    const nights = needed - missing;
+    const notice = taken.length > 0 ? `Le date dei voli sono fisse (17 nov → 4 dic): per ${label} ho spostato ${taken.join(", ")} ${taken.length === 1 && taken[0].startsWith("1 ") ? "notte" : "notti"}. Puoi ribilanciarle quando vuoi dal riquadro Tappe.` : "";
+    return { stops: next, nights, notice };
+  }
+
+  function insertStopAfter(current: Stop[], stop: Stop, afterId: string) {
+    const anchorIndex = current.findIndex((item) => item.id === afterId);
+    const index = Math.min(anchorIndex >= 0 ? anchorIndex + 1 : Math.max(1, current.length - 1), current.length - 1);
+    return [...current.slice(0, index), stop, ...current.slice(index)];
+  }
+
+  const addAfterId = newStopOptions.afterId || (selectedStop.id !== "shanghai" ? selectedStop.id : stops[stops.length - 2]?.id || "beijing");
+
+  async function addStop(event: FormEvent) {
     event.preventDefault();
     const name = newStopName.trim();
-    if (!name) return;
-    if (remainingNights < 1) {
-      showNightsNotice("Tutte le notti tra il 17 novembre e il 4 dicembre sono già assegnate: per aggiungere una città, togli prima una notte a un'altra tappa.");
+    if (!name || addingStop) return;
+    const slug = slugifyStopName(name);
+    const suggestion = SUGGESTED_STOPS.find((item) => item.id === slug || item.name.toLocaleLowerCase("it") === name.toLocaleLowerCase("it"));
+    if (suggestion && !stops.some((stop) => stop.id === suggestion.id)) {
+      addSuggestedStop(suggestion, { nights: newStopOptions.nights, afterId: addAfterId, donorId: newStopOptions.donorId });
+      setNewStopName("");
       return;
     }
-    const stop: Stop = { id: uid("stop"), name, lat: 30, lng: 111, nights: 1, hotelNightly: 80, activities: [] };
-    const nextStops = [...stops.slice(0, -1), stop, stops[stops.length - 1]];
+    const needed = Math.max(1, newStopOptions.nights);
+    const allocation = allocateNightsForNewStop(stops, needed, newStopOptions.donorId, name);
+    if (allocation.nights < 1) {
+      showNightsNotice("Tutte le tappe hanno già una sola notte: per aggiungere una città bisogna prima eliminarne un'altra.");
+      return;
+    }
+    setAddingStop(true);
+    const coords = await geocodeCity(name);
+    setAddingStop(false);
+    const id = stops.some((stop) => stop.id === slug) ? uid("stop") : slug;
+    const stop: Stop = { id, name, nameZh: STOP_ZH[slug], lat: coords?.lat ?? 30, lng: coords?.lng ?? 111, nights: allocation.nights, hotelNightly: 80, activities: [] };
+    const nextStops = insertStopAfter(allocation.stops, stop, addAfterId);
     setStops(nextStops);
     addHotelStayForStop(stop, nextStops);
     setSelectedStopId(stop.id);
     setNewStopName("");
-    recordChange("Tappa aggiunta", stop.name);
+    setNewStopOptions({ nights: 1, afterId: "", donorId: "" });
+    if (allocation.notice) showNightsNotice(allocation.notice);
+    else if (!coords) showNightsNotice(`${name} aggiunta, ma non ho trovato le coordinate: il punto sulla mappa è indicativo.`);
+    recordChange("Tappa aggiunta", `${stop.name} · ${stop.nights} ${stop.nights === 1 ? "notte" : "notti"}`);
   }
 
   // Ogni nuova destinazione parte con il suo blocco hotel "da prenotare", con le date della tappa.
@@ -2095,29 +2269,28 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
     recordChange("Attività clou aggiunta in agenda", `${activity.name} · ${selectedDay.dateKey}`);
   }
 
-  function addSuggestedStop(suggestion: SuggestedStop) {
+  function addSuggestedStop(suggestion: SuggestedStop, options?: { nights?: number; afterId?: string; donorId?: string }) {
     if (stops.some((stop) => stop.id === suggestion.id)) return;
-    if (remainingNights < 1) {
-      showNightsNotice(`Non ci sono notti libere per ${suggestion.name}: le date dei voli sono fisse (17 nov → 4 dic). Togli prima una notte a un'altra tappa e riprova.`);
+    const needed = Math.max(1, options?.nights || suggestion.nights);
+    const afterId = options?.afterId || (stops.some((stop) => stop.id === suggestion.insertAfterId) ? suggestion.insertAfterId : stops[stops.length - 2]?.id || "beijing");
+    const allocation = allocateNightsForNewStop(stops, needed, options?.donorId || afterId, suggestion.name);
+    if (allocation.nights < 1) {
+      showNightsNotice("Tutte le tappe hanno già una sola notte: per aggiungere una città bisogna prima eliminarne un'altra.");
       return;
-    }
-    const nights = Math.min(suggestion.nights, remainingNights);
-    if (nights < suggestion.nights) {
-      showNightsNotice(`${suggestion.name} aggiunta con ${nights} ${nights === 1 ? "notte" : "notti"} invece di ${suggestion.nights}: erano le uniche libere. Puoi ribilanciare le notti tra le tappe.`);
     }
     const stop: Stop = {
       id: suggestion.id,
       name: suggestion.name,
+      nameZh: STOP_ZH[suggestion.id],
       lat: suggestion.lat,
       lng: suggestion.lng,
-      nights,
+      nights: allocation.nights,
       hotelNightly: suggestion.hotelNightly,
       activities: suggestion.activities.map((activity) => ({ ...activity })),
     };
-    const anchorIndex = stops.findIndex((item) => item.id === suggestion.insertAfterId);
-    const index = anchorIndex >= 0 ? anchorIndex + 1 : Math.max(1, stops.length - 1);
-    const nextStops = [...stops.slice(0, index), stop, ...stops.slice(index)];
+    const nextStops = insertStopAfter(allocation.stops, stop, afterId);
     setStops(nextStops);
+    if (allocation.notice) showNightsNotice(allocation.notice);
     addHotelStayForStop(stop, nextStops);
     setSelectedStopId(stop.id);
     recordChange("Tappa aggiunta dalle proposte", `${stop.name} · ${stop.nights} ${stop.nights === 1 ? "notte" : "notti"}`);
@@ -2251,7 +2424,15 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                     </div>}
                   </div>;
                 })}
-                <form className="add-stop" onSubmit={addStop}><input value={newStopName} onChange={(event) => setNewStopName(event.target.value)} placeholder={remainingNights > 0 ? `Aggiungi una città (${remainingNights} ${remainingNights === 1 ? "notte libera" : "notti libere"})` : "Libera una notte da una tappa per aggiungere una città"} /><button type="submit">+ Aggiungi tappa</button></form>
+                <form className="add-stop add-stop-rich" onSubmit={addStop}>
+                  <input className="add-stop-name" value={newStopName} onChange={(event) => setNewStopName(event.target.value)} placeholder="Aggiungi una città (es. Chongqing, Guilin, Lijiang…)" list="suggested-stop-names" />
+                  <datalist id="suggested-stop-names">{SUGGESTED_STOPS.filter((suggestion) => !stops.some((stop) => stop.id === suggestion.id)).map((suggestion) => <option key={suggestion.id} value={suggestion.name} />)}</datalist>
+                  <label>Dopo<select value={addAfterId} onChange={(event) => setNewStopOptions((current) => ({ ...current, afterId: event.target.value }))}>{stops.filter((stop) => stop.id !== "shanghai").map((stop) => <option key={stop.id} value={stop.id}>{stop.name}</option>)}</select></label>
+                  <label>Notti<input type="number" min="1" max="6" value={newStopOptions.nights} onChange={(event) => setNewStopOptions((current) => ({ ...current, nights: Math.max(1, Number(event.target.value) || 1) }))} /></label>
+                  <label>Notti prese da<select value={newStopOptions.donorId} onChange={(event) => setNewStopOptions((current) => ({ ...current, donorId: event.target.value }))}><option value="">{remainingNights > 0 ? `Notti libere (${remainingNights})` : "Automatico · tappa più lunga"}</option>{stops.filter((stop) => stop.nights > 1).map((stop) => <option key={stop.id} value={stop.id}>{stop.name} ({stop.nights} notti)</option>)}</select></label>
+                  <button type="submit" disabled={addingStop}>{addingStop ? "Cerco la città…" : "+ Aggiungi tappa"}</button>
+                  <small>Le date dei voli sono fisse: se le 17 notti sono già assegnate, la nuova tappa le prende dalla tappa scelta e ti avviso.</small>
+                </form>
               </div>
             </article>
 
@@ -2401,7 +2582,7 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
       {section === "calendar" && <section className="panel-section">
         <div className="section-title agenda-title">
           <div><p className="eyebrow">Agenda condivisa · sincronizzata tra i vostri dispositivi</p><h2>Giorno per giorno, ora per ora</h2></div>
-          <div className="agenda-summary"><span><b>{scheduleItems.length}</b> attività</span><span><b>{bookingCount}</b> da prenotare</span><span><b>{euro.format(activitiesCost)}</b> pianificati</span><button onClick={() => window.print()}>Stampa piano</button></div>
+          <div className="agenda-summary"><span><b>{scheduleItems.length}</b> attività</span><span><b>{bookingCount}</b> da prenotare</span><span><b>{euro.format(activitiesCost)}</b> pianificati</span><div className="agenda-view-toggle" role="group" aria-label="Vista agenda"><button className={agendaView === "list" ? "active" : ""} onClick={() => setAgendaView("list")}>☰ Lista</button><button className={agendaView === "hours" ? "active" : ""} onClick={() => setAgendaView("hours")}>🕒 Ore</button></div><button onClick={() => window.print()}>Stampa piano</button></div>
         </div>
 
         <div className="day-strip-wrap">
@@ -2450,6 +2631,18 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
                 </article>;
               })}
             </div>
+            {selectedDayLeg && <article className={`day-leg-banner ${selectedDayLeg.bookingStatus === "prenotato" ? "booked" : ""}`}>
+              <span className="day-leg-icon">{/✈/.test(selectedDayLeg.mode) ? "✈️" : /🚌|bus/i.test(selectedDayLeg.mode) ? "🚌" : /🚕|didi|taxi/i.test(selectedDayLeg.mode) ? "🚕" : "🚄"}</span>
+              <div>
+                <small>Tratta del giorno · {selectedDayLeg.bookingStatus === "prenotato" ? "prenotata" : "da prenotare"}</small>
+                <b>{legLabel(selectedDayLeg)}</b>
+                <p>{selectedDayLeg.departureTime ? `${selectedDayLeg.departureTime}${selectedDayLeg.arrivalTime ? ` → ${selectedDayLeg.arrivalTime}` : ""}` : "Orari da definire"}{selectedDayLeg.serviceNumber ? ` · ${selectedDayLeg.serviceNumber}` : ""} · {selectedDayLeg.mode} · {selectedDayLeg.duration}{selectedDayLeg.fromStation ? ` · ${selectedDayLeg.fromStation}${selectedDayLeg.toStation ? ` → ${selectedDayLeg.toStation}` : ""}` : ""}</p>
+              </div>
+              <div className="day-leg-actions">
+                {safeExternalLink(selectedDayLeg.ticketUrl) && <a href={safeExternalLink(selectedDayLeg.ticketUrl)} target="_blank" rel="noreferrer">🎟 Biglietto ↗</a>}
+                <button onClick={() => setSection("transport")}>{selectedDayLeg.bookingStatus === "prenotato" ? "Dettagli" : "Prenota"} →</button>
+              </div>
+            </article>}
             {conflictingIds.size > 0 && <div className="agenda-warning"><b>Attenzione agli orari</b><span>Due o più attività si sovrappongono. Modifica inizio o fine nei blocchi evidenziati.</span></div>}
 
             {(stops.find((item) => item.id === selectedDay?.stopId)?.activities.length || 0) > 0 && <div className="day-clou">
@@ -2464,12 +2657,25 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
               </div>
             </div>}
 
-            <div className="time-plan">
+            {agendaView === "hours" && <article className="card hour-card">
+              <div className="card-head"><div><p className="eyebrow">Vista a ore · {selectedDay?.city}</p><h3>{selectedDay ? longDate.format(selectedDay.date) : ""}</h3></div><span className="subtle">Tocca un’ora libera per creare un blocco · tocca un blocco per modificarlo</span></div>
+              <HourGrid blocks={dayHourBlocks} onPickTime={(time) => {
+                setNewScheduleItem((current) => ({ ...current, startTime: time, endTime: minutesToTime(timeToMinutes(time) + 120) }));
+                window.setTimeout(() => document.getElementById("new-plan")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+              }} onOpenBlock={(block) => {
+                if (block.kind === "leg") { setSection("transport"); return; }
+                setAgendaView("list");
+                window.setTimeout(() => document.getElementById(`plan-${block.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 80);
+              }} />
+              <div className="hour-legend"><span><i className="activity" /> Attività</span><span><i className="transport" /> Spostamento</span><span><i className="leg" /> Tratta tra città</span><span><i className="booked" /> Prenotato</span></div>
+            </article>}
+
+            <div className="time-plan" hidden={agendaView === "hours"}>
               {selectedDayItems.length === 0 && <div className="empty-day"><span>+</span><b>Questa giornata è ancora libera</b><p>Aggiungi il primo blocco con il modulo qui sotto.</p></div>}
               {selectedDayItems.map((item) => {
                 const kind = scheduleKind(item);
                 const itemMapLink = mapLinkFor(item, selectedDay?.city || "");
-                return <article className={`schedule-item kind-${kind} ${conflictingIds.has(item.id) ? "conflict" : ""} ${item.bookingStatus === "prenotato" ? "booked" : ""}`} key={item.id}>
+                return <article id={`plan-${item.id}`} className={`schedule-item kind-${kind} ${conflictingIds.has(item.id) ? "conflict" : ""} ${item.bookingStatus === "prenotato" ? "booked" : ""}`} key={item.id}>
                 <div className="schedule-time">
                   <label>Inizio<input type="time" step="300" value={item.startTime} onChange={(event) => updateScheduleItem(item.id, { startTime: event.target.value })} onBlur={(event) => logScheduleField(item, "inizio", event.target.value)} /></label>
                   <span>↓</span>
@@ -2581,20 +2787,44 @@ function PlannerApp({ currentUser }: { currentUser: User }) {
             </button>)}
           </div>
         </article>
-        <div className="section-title compact"><div><p className="eyebrow">Tratte principali</p><h2>Collegamenti tra le tappe</h2></div></div>
+        <div className="section-title compact"><div><p className="eyebrow">Tratte principali · {bookedLegsCount}/{normalizedLegs.filter((leg) => leg.included).length} prenotate</p><h2>Collegamenti tra le tappe</h2></div><span className="subtle">Inserisci orari e numero treno/volo: la tratta compare nell’agenda del giorno e, se prenotata, nel consuntivo</span></div>
         <div className="transport-list">
           {normalizedLegs.map((leg) => {
             const fromStop = stops.find((stop) => stop.id === leg.fromId);
             const toStop = stops.find((stop) => stop.id === leg.toId);
-            return <article key={leg.id} className={`transport-card ${leg.included ? "" : "disabled"}`}>
+            const legDate = legDateFor(leg);
+            const isFlight = /✈|volo|aereo|flight/i.test(leg.mode);
+            const booked = leg.bookingStatus === "prenotato";
+            const routeLabel = `${fromStop?.name || ""} → ${toStop?.name || ""}`;
+            return <article key={leg.id} className={`transport-card ${leg.included ? "" : "disabled"} ${booked ? "booked" : ""}`}>
               <div className="transport-route"><span>{fromStop?.name}</span><i>→</i><span>{toStop?.name}</span></div>
+              <div className="transport-date">
+                <b>{legDate ? longDate.format(new Date(`${legDate}T12:00:00`)) : "Data da definire"}</b>
+                <span className={booked ? "ok" : ""}>{booked ? "✓ Prenotata" : "Da prenotare"}{leg.departureTime ? ` · ${leg.departureTime}${leg.arrivalTime ? ` → ${leg.arrivalTime}` : ""}` : " · orari da definire"}</span>
+              </div>
               <div className="transport-fields">
                 <label>Mezzo<input value={leg.mode} onChange={(event) => updateLeg(leg.id, { mode: event.target.value })} /></label>
                 <label>Durata<input value={leg.duration} onChange={(event) => updateLeg(leg.id, { duration: event.target.value })} /></label>
                 <label>Costo per 2<span className="money-input"><input type="number" min="0" value={leg.cost} onChange={(event) => updateLeg(leg.id, { cost: Number(event.target.value) || 0 })} /><select aria-label={`Valuta ${fromStop?.name} ${toStop?.name}`} value={leg.currency || "EUR"} onChange={(event) => updateLeg(leg.id, { currency: event.target.value as Currency })}><option value="EUR">€</option><option value="CNY">¥</option></select></span></label>
               </div>
+              <div className="transport-fields booking">
+                <label>Partenza<input type="time" step="300" value={leg.departureTime || ""} onChange={(event) => updateLeg(leg.id, { departureTime: event.target.value })} onBlur={(event) => { if (event.target.value) recordChange("Orario tratta", `${routeLabel}: partenza ${event.target.value}`); }} /></label>
+                <label>Arrivo<input type="time" step="300" value={leg.arrivalTime || ""} onChange={(event) => updateLeg(leg.id, { arrivalTime: event.target.value })} onBlur={(event) => { if (event.target.value) recordChange("Orario tratta", `${routeLabel}: arrivo ${event.target.value}`); }} /></label>
+                <label>{isFlight ? "Volo n." : "Treno n."}<input value={leg.serviceNumber || ""} placeholder={isFlight ? "Es. MU5401" : "Es. G89"} onChange={(event) => updateLeg(leg.id, { serviceNumber: event.target.value })} /></label>
+                <label>{isFlight ? "Aeroporto di partenza" : "Stazione di partenza"}<input value={leg.fromStation || ""} placeholder={isFlight ? "Es. Chengdu Tianfu (TFU)" : "Es. Beijing West 北京西"} onChange={(event) => updateLeg(leg.id, { fromStation: event.target.value })} /></label>
+                <label>{isFlight ? "Aeroporto di arrivo" : "Stazione di arrivo"}<input value={leg.toStation || ""} placeholder={isFlight ? "Es. Kunming Changshui (KMG)" : "Es. Xi'an North 西安北"} onChange={(event) => updateLeg(leg.id, { toStation: event.target.value })} /></label>
+                <label>Stato<select value={leg.bookingStatus || "da-prenotare"} onChange={(event) => { const status = event.target.value as Leg["bookingStatus"]; updateLeg(leg.id, { bookingStatus: status }); recordChange("Stato tratta", `${routeLabel}: ${status === "prenotato" ? "prenotata" : "da prenotare"}`); }}><option value="da-prenotare">Da prenotare</option><option value="prenotato">Prenotata</option></select></label>
+                {booked && <label>N. prenotazione<input value={leg.bookingRef || ""} placeholder="PNR / codice" onChange={(event) => updateLeg(leg.id, { bookingRef: event.target.value })} /></label>}
+                {booked && leg.cost > 0 && <label>Chi ha pagato<select value={leg.paidBy || ""} onChange={(event) => { const payer = (event.target.value || undefined) as Payer | undefined; updateLeg(leg.id, { paidBy: payer }); if (payer) recordChange("Pagamento registrato", `${routeLabel}: ha pagato ${PAYER_LABELS[payer]}`); }}><option value="">Da assegnare</option><option value="alberto">Alberto</option><option value="sofia">Sofia</option></select></label>}
+                <label className="wide">Link biglietto / PDF<input value={leg.ticketUrl || ""} placeholder="Link Trip.com, PDF su Drive o mail di conferma" onChange={(event) => updateLeg(leg.id, { ticketUrl: event.target.value })} /></label>
+              </div>
               <p>{leg.note}</p>
-              <div className="transport-actions"><button onClick={() => updateLeg(leg.id, { included: !leg.included })}>{leg.included ? "Togli dal viaggio" : "Aggiungi al viaggio"}</button><a href={googleMapsSearchUrl(toStop?.name || "")} target="_blank" rel="noreferrer">Destinazione su Google Maps ↗</a></div>
+              <div className="transport-actions">
+                <button onClick={() => updateLeg(leg.id, { included: !leg.included })}>{leg.included ? "Togli dal viaggio" : "Aggiungi al viaggio"}</button>
+                {legDate && <button onClick={() => openDayInAgenda(legDate)}>Vedi giornata in agenda →</button>}
+                {safeExternalLink(leg.ticketUrl) && <a className="ticket-link" href={safeExternalLink(leg.ticketUrl)} target="_blank" rel="noreferrer">🎟 Biglietto ↗</a>}
+                <a href={isFlight ? `https://www.trip.com/flights/` : `https://www.trip.com/trains/`} target="_blank" rel="noreferrer">{isFlight ? "Voli su Trip.com ↗" : "Treni su Trip.com ↗"}</a>
+              </div>
             </article>;
           })}
         </div>

@@ -204,6 +204,7 @@ h3 { margin-bottom: 12px; font: 800 17px/1.15 var(--sans); letter-spacing: -.01e
 .agenda-warning { padding: 11px 14px; display: flex; gap: 10px; align-items: center; border: 1px solid #e7ad91; border-radius: 12px; color: #823d25; background: #fff0e8; font-size: 10px; }
 .agenda-warning b { white-space: nowrap; }
 .time-plan { display: grid; gap: 10px; }
+.time-plan[hidden] { display: none; }
 .empty-day { min-height: 250px; display: grid; place-items: center; align-content: center; padding: 30px; border: 1px dashed #aebbb3; border-radius: 20px; color: var(--muted); background: rgba(255,253,248,.55); text-align: center; }
 .empty-day span { width: 48px; height: 48px; display: grid; place-items: center; margin-bottom: 10px; border-radius: 50%; color: white; background: var(--green); font-size: 24px; }
 .empty-day b { color: var(--ink); font: 700 21px var(--sans); }
@@ -561,6 +562,65 @@ h3 { margin-bottom: 12px; font: 800 17px/1.15 var(--sans); letter-spacing: -.01e
 .stop-main small, .leg-inline small { font-size: 11px; }
 .expense-row small, .history-row p, .history-row b, .history-row strong { font-size: 11px; }
 
+
+/* --- Aggiunta tappa: posizione, notti, da chi prendere le notti --- */
+.add-stop-rich { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) 72px minmax(0, 1.1fr) auto; align-items: end; }
+.add-stop-rich .add-stop-name { grid-column: 1 / -1; }
+.add-stop-rich label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.add-stop-rich label select, .add-stop-rich label input { width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: white; color: var(--ink); font-size: 13px; text-transform: none; }
+.add-stop-rich button:disabled { opacity: .6; cursor: wait; }
+.add-stop-rich small { grid-column: 1 / -1; color: var(--muted); font-size: 10px; }
+
+/* --- Tratte: data, prenotazione --- */
+.transport-date { margin: -6px 0 12px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; }
+.transport-date b { font-size: 13px; }
+.transport-date span { color: var(--orange); font-size: 10px; font-weight: 800; }
+.transport-date span.ok { color: var(--green); }
+.transport-fields.booking { margin-top: 10px; padding-top: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px dashed var(--line); }
+.transport-fields.booking label.wide { grid-column: 1 / -1; }
+.transport-fields select { width: 100%; margin-top: 4px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--ink); font-size: 13px; }
+.transport-card.booked { border-color: #9bb7a5; background: linear-gradient(180deg, #fffdf8, #f0f6f1); }
+.transport-actions { flex-wrap: wrap; }
+.transport-actions a.ticket-link { margin-left: 0; }
+
+/* --- Tratta del giorno in agenda --- */
+.day-leg-banner { min-height: 84px; margin-bottom: 10px; padding: 13px 15px; display: grid; grid-template-columns: 42px minmax(0,1fr) auto; gap: 13px; align-items: center; border: 1px solid #bfd2dc; border-radius: 16px; color: var(--ink); background: linear-gradient(90deg, #f4f9fb, var(--blue-soft)); box-shadow: var(--shadow); }
+.day-leg-banner.booked { border-color: #9bb7a5; background: linear-gradient(90deg, #f7fbf8, var(--green-soft)); }
+.day-leg-icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; color: white; background: var(--blue); font-size: 20px; }
+.day-leg-banner.booked .day-leg-icon { background: var(--green); }
+.day-leg-banner > div:nth-child(2) small, .day-leg-banner > div:nth-child(2) b, .day-leg-banner > div:nth-child(2) p { display: block; }
+.day-leg-banner > div:nth-child(2) small { color: var(--blue); font-size: 8px; font-weight: 900; text-transform: uppercase; }
+.day-leg-banner.booked > div:nth-child(2) small { color: var(--green); }
+.day-leg-banner > div:nth-child(2) b { font: 700 17px var(--sans); }
+.day-leg-banner > div:nth-child(2) p { margin: 2px 0 0; color: var(--muted); font-size: 10px; }
+.day-leg-actions { display: flex; gap: 5px; }
+.day-leg-actions a, .day-leg-actions button { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--blue); background: white; font-size: 10px; font-weight: 850; text-decoration: none; cursor: pointer; white-space: nowrap; }
+.day-leg-actions button { border-color: var(--blue); color: white; background: var(--blue); }
+
+/* --- Vista a ore --- */
+.agenda-view-toggle { display: inline-flex; padding: 3px; border: 1px solid var(--line); border-radius: 11px; background: white; }
+.agenda-view-toggle button { padding: 7px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 10px; font-weight: 850; cursor: pointer; }
+.agenda-view-toggle button.active { color: white; background: var(--ink); }
+.hour-card { margin-bottom: 14px; }
+.hour-grid { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: white; }
+.hour-row { position: absolute; left: 0; right: 0; padding: 0; display: block; border: 0; border-top: 1px solid #ece7da; background: transparent; text-align: left; cursor: pointer; }
+.hour-row:hover { background: var(--green-soft); }
+.hour-row span { position: absolute; left: 8px; top: 4px; color: var(--muted); font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.hour-block { position: absolute; padding: 5px 8px; display: flex; flex-direction: column; gap: 1px; overflow: hidden; border: 1px solid transparent; border-left: 4px solid var(--green); border-radius: 9px; background: #eaf3ec; color: var(--ink); text-align: left; cursor: pointer; box-shadow: 0 4px 12px rgba(20,37,31,.08); }
+.hour-block b { font-size: 11px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hour-block small { color: var(--muted); font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hour-block.kind-transport { border-left-color: var(--blue); background: var(--blue-soft); }
+.hour-block.kind-leg { border-left-color: var(--orange); background: var(--orange-soft); }
+.hour-block.booked { border-color: #9bb7a5; }
+.hour-block.booked b::before { content: "✓ "; color: var(--green); }
+.hour-block.conflict { border-color: #e0553a; box-shadow: 0 0 0 2px rgba(224,85,58,.25); }
+.hour-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; color: var(--muted); font-size: 10px; font-weight: 800; }
+.hour-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.hour-legend i { width: 14px; height: 10px; border-left: 3px solid var(--green); border-radius: 3px; background: #eaf3ec; }
+.hour-legend i.transport { border-left-color: var(--blue); background: var(--blue-soft); }
+.hour-legend i.leg { border-left-color: var(--orange); background: var(--orange-soft); }
+.hour-legend i.booked { border: 1px solid #9bb7a5; border-left-width: 3px; }
+
 @media (max-width: 1100px) {
   .section-grid { grid-template-columns: 1fr; }
   .city-workspace { position: static; max-height: none; }
@@ -596,6 +656,12 @@ h3 { margin-bottom: 12px; font: 800 17px/1.15 var(--sans); letter-spacing: -.01e
 }
 
 @media (max-width: 560px) {
+  .add-stop-rich { grid-template-columns: 1fr 1fr; }
+  .add-stop-rich button { grid-column: 1 / -1; }
+  .transport-fields.booking { grid-template-columns: 1fr 1fr; }
+  .day-leg-banner { grid-template-columns: 42px 1fr; }
+  .day-leg-actions { grid-column: 2; }
+  .agenda-view-toggle { order: -1; }
   .hero { min-height: 210px; padding: 14px; }
   .hero .eyebrow { font-size: 10px; }
   .day-strip-wrap { grid-template-columns: 1fr; top: 6px; }
@@ -666,7 +732,7 @@ h3 { margin-bottom: 12px; font: 800 17px/1.15 var(--sans); letter-spacing: -.01e
 }
 
 @media print {
-  .nav, .sync-bar, .stop-actions, .add-stop, .transport-actions, .day-strip-wrap, .add-plan-card, .agenda-summary button, .schedule-meta .danger-text, .add-cost, .cost-row .danger-text, .cover-actions { display: none !important; }
+  .nav, .sync-bar, .stop-actions, .add-stop, .transport-actions, .day-strip-wrap, .add-plan-card, .agenda-summary button, .agenda-view-toggle, .schedule-meta .danger-text, .add-cost, .cost-row .danger-text, .cover-actions { display: none !important; }
   body { background: white; }
   .agenda-layout { grid-template-columns: 1fr; }
   .card, .schedule-item, .transport-card { box-shadow: none; break-inside: avoid; }

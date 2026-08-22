@@ -95,8 +95,8 @@ test("blocca le notti dentro le date fisse dei voli", async () => {
   assert.match(planner, /showNightsNotice/);
   assert.match(planner, /nightsNotice/);
   assert.match(planner, /Le date dei voli sono fisse/);
-  assert.match(planner, /remainingNights < 1/);
-  assert.match(planner, /Math\.min\(suggestion\.nights, remainingNights\)/);
+  assert.match(planner, /allocateNightsForNewStop\(stops, needed/);
+  assert.match(planner, /allocation\.nights < 1/);
   assert.match(planner, /notti libere/);
 });
 
@@ -234,4 +234,20 @@ test("reinserisce Chengdu dopo Xi’an nei piani salvati che l’hanno persa", a
   assert.match(planner, /id: "d17-tower"/);
   assert.match(planner, /id: "beijing"/);
   assert.match(planner, /id: "shanghai"/);
+});
+
+test("aggiunge tappe riallocando le notti e prenota le tratte con orari", async () => {
+  const planner = await source("app/ChinaPlanner.tsx");
+
+  assert.match(planner, /allocateNightsForNewStop/);
+  assert.match(planner, /insertStopAfter/);
+  assert.match(planner, /geocodeCity/);
+  assert.match(planner, /Notti prese da/);
+  assert.match(planner, /departureTime\?: string/);
+  assert.match(planner, /serviceNumber/);
+  assert.match(planner, /legDateFor/);
+  assert.match(planner, /Tratta del giorno/);
+  assert.match(planner, /function HourGrid/);
+  assert.match(planner, /agendaView === "hours"/);
+  assert.match(planner, /category: "trasporti" as ExpenseCategory/);
 });
