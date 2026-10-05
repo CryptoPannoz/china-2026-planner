@@ -21,6 +21,7 @@ import {
   scheduleActivity,
   seedPlan,
   setStopNights,
+  settleUpEntry,
   shapePlan,
   totalNights,
 } from "../lib/planner/model.ts";
@@ -353,4 +354,56 @@ test("v5: Pechino 3 notti per l'hotel di Xi'an dal 20 nov, poi Chengdu (2) e Cho
   const again = migratePlan(shapePlan(clone(removeStop(plan, "chongqing").plan))!);
   assert.ok(!again.plan.stops.some((stop) => stop.id === "chongqing"));
   assert.deepEqual(again.notes, []);
+});
+
+function balanceOf(plan: PlanData) {
+  return computeBudget(plan, normalizeLegs(plan.stops, plan.legs), (leg) => leg.id, () => ARRIVAL_KEY);
+}
+
+test("pareggiare i conti: un debito esterno si scala dal bilancio e «Salda» porta a zero", () => {
+  const plan: PlanData = {
+    ...seedPlan(),
+    expenses: [{ id: "hotel-xian", date: "2026-11-20", label: "Hotel Xi'an", amount: 600, currency: "EUR", paidBy: "sofia", category: "hotel" }],
+  };
+  assert.equal(balanceOf(plan).splitBalance, -300);
+
+  // Sofia deve 200 € di affitto ad Alberto: lui li scala da quello che le deve per il viaggio.
+  const withRent: PlanData = { ...plan, settlements: [{ id: "affitto", date: "2026-10-05", label: "Affitto", amount: 200, currency: "EUR", kind: "debito", from: "sofia" }] };
+  const budget = balanceOf(withRent);
+  assert.equal(budget.tripBalance, -300);
+  assert.equal(budget.settlementsBalance, 200);
+  assert.equal(budget.splitBalance, -100);
+
+  const settle = settleUpEntry(budget.splitBalance, "2026-12-04")!;
+  assert.deepEqual({ kind: settle.kind, from: settle.from, amount: settle.amount }, { kind: "rimborso", from: "alberto", amount: 100 });
+  const settled = { ...withRent, settlements: [...withRent.settlements, settle] };
+  assert.ok(Math.abs(balanceOf(settled).splitBalance) < 0.005);
+  assert.equal(settleUpEntry(balanceOf(settled).splitBalance, "2026-12-04"), null);
+  // I movimenti sopravvivono al salvataggio; quelli malformati no.
+  const reloaded = shapePlan(clone({ ...settled, settlements: [...settled.settlements, { id: "rotto", amount: -5, from: "bob" }] }))!;
+  assert.deepEqual(reloaded.settlements.map((entry) => entry.id), ["affitto", settle.id]);
+});
+
+test("attività prenotata con chi ha pagato: entra nel consuntivo e nel bilancio", () => {
+  const seeded = seedPlan();
+  const plan: PlanData = {
+    ...seeded,
+    scheduleItems: seeded.scheduleItems.map((item) => (item.id === "d03-wall" ? { ...item, price: 120, bookingStatus: "prenotato", paidBy: "alberto" } : item)),
+  };
+  const budget = balanceOf(plan);
+  assert.ok(budget.confirmed.some((entry) => entry.id === "conf-d03-wall" && entry.paidBy === "alberto"));
+  assert.equal(budget.splitBalance, 60);
+  assert.equal(budget.unassigned, 0);
+});
+
+test("v6: il tour della Città Proibita diventa prenotato, senza prendere la stima come prezzo pagato", () => {
+  const seeded = seedPlan();
+  const { plan, notes } = migratePlan(shapePlan(clone({ ...seeded, itineraryVersion: 5 }))!);
+  const tour = plan.scheduleItems.find((item) => item.sourceActivityId === "forbidden-city")!;
+  assert.equal(tour.bookingStatus, "prenotato");
+  assert.match(tour.name, /Tour della Città Proibita/);
+  assert.equal(tour.price, 0);
+  assert.equal(tour.stopId, "beijing");
+  assert.match(notes.join(" "), /Città Proibita/);
+  assert.equal(balanceOf(plan).unassigned, 0);
 });

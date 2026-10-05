@@ -17,7 +17,7 @@ import {
   initialSchedule,
   initialStops,
 } from "./catalog.ts";
-import type { Activity, ExpenseCategory, HotelStay, Leg, Payer, PlanData, ScheduleItem, ScheduleKind, Stop, SuggestedStop } from "./types.ts";
+import type { Activity, ExpenseCategory, HotelStay, Leg, Payer, PlanData, ScheduleItem, ScheduleKind, Settlement, Stop, SuggestedStop } from "./types.ts";
 import { addDaysKey, diffDaysKey, formatShortDate, isDateKey, minutesToTime, plural, sameValue, timeToMinutes, toEuro, uid } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -258,10 +258,10 @@ export function findFreeSlot(busy: Array<{ startTime: string; endTime: string }>
 // Caricamento e migrazioni dei dati salvati
 // ---------------------------------------------------------------------------
 
-const ID_ARRAY_KEYS = ["stops", "legs", "scheduleItems", "hotelStays", "extraChecklist", "sharedLinks", "costEntries", "expenses"] as const;
+const ID_ARRAY_KEYS = ["stops", "legs", "scheduleItems", "hotelStays", "extraChecklist", "sharedLinks", "costEntries", "expenses", "settlements"] as const;
 export const PLAN_KEYS: Array<keyof PlanData> = [
   "itineraryVersion", "stops", "legs", "scheduleItems", "hotelStays", "checklist", "extraChecklist", "sharedLinks",
-  "notes", "cnyPerEuro", "costEntries", "expenses", "customCategories", "dismissedSuggestions", "coverPhoto",
+  "notes", "cnyPerEuro", "costEntries", "expenses", "settlements", "customCategories", "dismissedSuggestions", "coverPhoto",
 ];
 
 function hasId(value: unknown): value is { id: string } {
@@ -294,6 +294,7 @@ export function shapePlan(value: unknown): PlanData | null {
     cnyPerEuro: typeof data.cnyPerEuro === "number" && data.cnyPerEuro > 0 ? data.cnyPerEuro : DEFAULT_CNY_PER_EURO,
     costEntries: idArray<PlanData["costEntries"][number]>(data.costEntries),
     expenses: idArray<PlanData["expenses"][number]>(data.expenses),
+    settlements: idArray<Settlement>(data.settlements).filter((item) => item.amount > 0 && (item.from === "alberto" || item.from === "sofia")),
     customCategories: stringArray(data.customCategories),
     dismissedSuggestions: stringArray(data.dismissedSuggestions),
     coverPhoto: typeof data.coverPhoto === "string" ? data.coverPhoto : "",
@@ -469,6 +470,24 @@ export function migratePlan(input: PlanData): { plan: PlanData; notes: string[] 
     if (applied.length) notes.push(["Itinerario definitivo: Pechino 3 notti (hotel di Xi’an dal 20 nov), poi Chengdu 2 notti e Chongqing 1.", ...applied.map((change) => change.notice).filter(Boolean)].join(" "));
   }
 
+  if (version >= 4 && version < 6 && plan.stops.some((stop) => stop.id === "beijing")) {
+    // v6: il tour della Città Proibita (biglietti inclusi) è prenotato; prezzo e chi ha pagato si completano in agenda.
+    const original = initialSchedule.find((item) => item.id === "d02-forbidden")!;
+    const tourNote = "Tour prenotato, biglietti inclusi: passaporti con sé.";
+    const tour = { name: "Tour della Città Proibita (di gruppo/privato) · biglietti inclusi", bookingStatus: "prenotato" as const, sourceActivityId: "forbidden-city" };
+    const existing = plan.scheduleItems.find((item) => item.stopId === "beijing" && (item.sourceActivityId === "forbidden-city" || item.id === original.id));
+    plan.scheduleItems = existing
+      ? plan.scheduleItems.map((item) => (item !== existing ? item : {
+        ...item,
+        ...tour,
+        // La stima di catalogo non è il prezzo pagato: meglio vuoto che un consuntivo sbagliato.
+        price: item.price === original.price ? 0 : item.price,
+        notes: !item.notes || item.notes === original.notes ? tourNote : `${item.notes} ${tourNote}`,
+      }))
+      : [...plan.scheduleItems, { ...normalizeScheduleItem(original), ...tour, id: "forbidden-tour", day: 1, price: 0, notes: tourNote }];
+    notes.push("Tour della Città Proibita segnato come prenotato: aggiungete prezzo e chi ha pagato in agenda.");
+  }
+
   // Pulizia sempre attiva: niente avanzi di tappe eliminate (tranne ciò che è già prenotato/pagato).
   const stopIds = new Set(plan.stops.map((stop) => stop.id));
   plan.scheduleItems = plan.scheduleItems.filter((item) => stopIds.has(item.stopId) || item.bookingStatus === "prenotato");
@@ -516,6 +535,7 @@ export function seedPlan(): PlanData {
     cnyPerEuro: DEFAULT_CNY_PER_EURO,
     costEntries: DEFAULT_COST_ENTRIES.map((entry) => ({ ...entry })),
     expenses: [],
+    settlements: [],
     customCategories: [],
     dismissedSuggestions: [],
     coverPhoto: "",
@@ -871,6 +891,8 @@ export function computeBudget(plan: PlanData, legs: Leg[], legLabel: (leg: Leg) 
   // I voli sono già pagati in pari: metà a testa, quindi non spostano il bilancio.
   const byPayer: Record<Payer, number> = { alberto: FLIGHTS_COST / 2 + paidBy("alberto"), sofia: FLIGHTS_COST / 2 + paidBy("sofia") };
   const unassigned = all.filter((entry) => !entry.paidBy).reduce((sum, entry) => sum + entry.amount, 0);
+  const tripBalance = (byPayer.alberto - byPayer.sofia) / 2;
+  const settlementsBalance = plan.settlements.reduce((sum, settlement) => sum + settlementEffect(settlement, plan.cnyPerEuro), 0);
   return {
     planned,
     spent,
@@ -879,9 +901,25 @@ export function computeBudget(plan: PlanData, legs: Leg[], legLabel: (leg: Leg) 
     confirmed,
     byPayer,
     unassigned,
-    /** >0: Sofia deve ad Alberto; <0: Alberto deve a Sofia. */
-    splitBalance: (byPayer.alberto - byPayer.sofia) / 2,
+    /** Solo spese del viaggio. >0: Sofia deve ad Alberto; <0: Alberto deve a Sofia. */
+    tripBalance,
+    /** Debiti esterni e rimborsi tra voi, con lo stesso segno. */
+    settlementsBalance,
+    /** Saldo finale da pareggiare: viaggio + debiti esterni + rimborsi. */
+    splitBalance: tripBalance + settlementsBalance,
   };
+}
+
+/** Quanto sposta il saldo (in euro, >0 verso «Sofia deve ad Alberto»): un debito di Sofia o un rimborso di Alberto. */
+export function settlementEffect(settlement: Settlement, cnyPerEuro: number) {
+  const amount = toEuro(settlement.amount, settlement.currency, cnyPerEuro);
+  return (settlement.kind === "debito") === (settlement.from === "sofia") ? amount : -amount;
+}
+
+/** Rimborso che porta il saldo a zero (chi deve dà all'altro il residuo), o null se siete già pari. */
+export function settleUpEntry(balance: number, date: string): Settlement | null {
+  if (Math.abs(balance) < 0.005) return null;
+  return { id: uid("saldo"), date, label: "Saldo dei conti", amount: roundCents(Math.abs(balance)), currency: "EUR", kind: "rimborso", from: balance > 0 ? "sofia" : "alberto" };
 }
 
 // ---------------------------------------------------------------------------

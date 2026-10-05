@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, type FormEvent } from "react";
-import { STOP_ZH, SUGGESTED_STOPS } from "@/lib/planner/catalog";
+import { PAYER_LABELS, STOP_ZH, SUGGESTED_STOPS } from "@/lib/planner/catalog";
 import { bestInsertionAfter, distanceKm, isLockedStop, scheduleActivity, scheduleKind, stopFromSuggestion, updateLeg } from "@/lib/planner/model";
 import type { Activity, PlanData, Stop, SuggestedStop } from "@/lib/planner/types";
 import { euro, formatCost, formatLongDate, formatShortDate, googleMapsSearchUrl, googleMapsStopUrl, plural, slugify, uid, webSearchUrl } from "@/lib/planner/utils";
@@ -456,7 +456,7 @@ function CityPanel() {
             <div>
               <b>{activity.name}</b>
               {activity.nameZh && <button className="zh-chip" title="Mostra in cinese a schermo intero" onClick={() => showChinese({ kind: "place", title: activity.name, titleZh: activity.nameZh, subtitle: stop.name, subtitleZh: stop.nameZh })}>中 {activity.nameZh}</button>}
-              {scheduled && <small className="scheduled-note">In agenda: {formatShortDate(scheduled.date)} · {scheduled.startTime}</small>}
+              {scheduled && <small className="scheduled-note">In agenda: {formatShortDate(scheduled.date)} · {scheduled.startTime}{scheduled.bookingStatus === "prenotato" ? ` · ✓ prenotato${scheduled.paidBy ? ` da ${PAYER_LABELS[scheduled.paidBy]}` : ""}` : ""}</small>}
               {activity.description && <small>{activity.description}</small>}
               <span className="activity-links"><a href={webSearchUrl(`${activity.name} ${stop.name} biglietti sito ufficiale`)} target="_blank" rel="noreferrer">Cerca sul web ↗</a><a href={googleMapsSearchUrl(activity.name, stop.name)} target="_blank" rel="noreferrer">Google Maps ↗</a>{activity.sourceUrl && <a href={activity.sourceUrl} target="_blank" rel="noreferrer">Fonte ↗</a>}</span>
             </div>

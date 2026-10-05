@@ -9,7 +9,7 @@ import { usePlanner } from "../context";
 import { MoneyInput, TextArea, TextInput } from "../fields";
 import { HourGrid, type HourBlock } from "../HourGrid";
 
-type NewBlock = Pick<ScheduleItem, "kind" | "startTime" | "endTime" | "name" | "category" | "fromLocation" | "location" | "transportMode" | "mapUrl" | "notes" | "price" | "currency" | "bookingStatus">;
+type NewBlock = Pick<ScheduleItem, "kind" | "startTime" | "endTime" | "name" | "category" | "fromLocation" | "location" | "transportMode" | "mapUrl" | "notes" | "price" | "currency" | "bookingStatus" | "paidBy">;
 
 function emptyBlock(kind: ScheduleKind = "activity"): NewBlock {
   return { kind, startTime: "09:00", endTime: "11:00", name: "", category: kind === "transport" ? "trasferimento" : "visita", fromLocation: "", location: "", transportMode: "", mapUrl: "", notes: "", price: 0, currency: "EUR", bookingStatus: "da-prenotare" };
@@ -83,6 +83,7 @@ export function AgendaSection() {
       location: draft.location.trim(),
       notes: draft.notes.trim(),
       endTime: draft.endTime < draft.startTime ? draft.startTime : draft.endTime,
+      paidBy: draft.bookingStatus === "prenotato" ? draft.paidBy : undefined,
     };
     update((current) => ({ ...current, scheduleItems: [...current.scheduleItems, item] }));
     setDraft((current) => ({ ...emptyBlock(current.kind), category: current.category, currency: current.currency }));
@@ -251,6 +252,7 @@ export function AgendaSection() {
           <label className="wide">{draft.kind === "transport" ? "A / destinazione" : "Luogo"}<input value={draft.location} placeholder="Nome, indirizzo o stazione (meglio anche in cinese)" onChange={(event) => setDraft((current) => ({ ...current, location: event.target.value }))} /></label>
           <label>Costo per 2<span className="money-input"><input inputMode="decimal" value={draft.price || ""} placeholder="0" onChange={(event) => setDraft((current) => ({ ...current, price: Math.max(0, Number(event.target.value.replace(",", ".")) || 0) }))} /><select aria-label="Valuta nuovo blocco" value={draft.currency} onChange={(event) => setDraft((current) => ({ ...current, currency: event.target.value as Currency }))}><option value="EUR">€</option><option value="CNY">¥</option></select></span></label>
           <label>Stato<select value={draft.bookingStatus} onChange={(event) => setDraft((current) => ({ ...current, bookingStatus: event.target.value as ScheduleItem["bookingStatus"] }))}><option value="da-prenotare">Da prenotare</option><option value="prenotato">Prenotato</option><option value="non-serve">Nessuna prenotazione</option></select></label>
+          {draft.bookingStatus === "prenotato" && <label>Chi ha pagato<select value={draft.paidBy || ""} onChange={(event) => setDraft((current) => ({ ...current, paidBy: (event.target.value || undefined) as Payer | undefined }))}><option value="">Da assegnare</option><option value="alberto">Alberto</option><option value="sofia">Sofia</option></select></label>}
           <label className="full">Note<textarea value={draft.notes} placeholder="Tempi di trasferimento, biglietti, promemoria…" onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))} /></label>
         </div>
         {draft.kind === "activity" && <div className="category-creator"><span>Non trovi la categoria?</span><input value={newCategory} placeholder="Es. Fotografia" onChange={(event) => setNewCategory(event.target.value)} /><button type="button" onClick={addCategory}>+ Crea categoria</button></div>}
@@ -331,7 +333,7 @@ function ScheduleCard({ item, conflict, overflow, city, days, categoryOptions, o
           onUpdate({ bookingStatus: event.target.value as ScheduleItem["bookingStatus"] });
           log("Stato modificato", `${item.name}: ${event.target.options[event.target.selectedIndex].text}`);
         }}><option value="da-prenotare">Da prenotare</option><option value="prenotato">Prenotato</option><option value="non-serve">Nessuna prenotazione</option></select></label>
-        {item.bookingStatus === "prenotato" && item.price > 0 && <label>Chi ha pagato <select value={item.paidBy || ""} onChange={(event) => {
+        {item.bookingStatus === "prenotato" && <label>Chi ha pagato <select value={item.paidBy || ""} onChange={(event) => {
           const payer = (event.target.value || undefined) as Payer | undefined;
           onUpdate({ paidBy: payer });
           if (payer) log("Pagamento registrato", `${item.name}: ha pagato ${PAYER_LABELS[payer]}`);

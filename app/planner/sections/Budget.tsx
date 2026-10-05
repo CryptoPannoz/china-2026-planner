@@ -2,8 +2,8 @@
 
 import { useState, type FormEvent } from "react";
 import { EXPENSE_CATEGORIES, FLIGHTS_COST, PAYER_LABELS } from "@/lib/planner/catalog";
-import { hotelNights } from "@/lib/planner/model";
-import type { Currency } from "@/lib/planner/types";
+import { hotelNights, settleUpEntry } from "@/lib/planner/model";
+import type { Currency, Payer, Settlement } from "@/lib/planner/types";
 import { euro, formatCost, formatShortDate, uid } from "@/lib/planner/utils";
 import { usePlanner } from "../context";
 import { NumberInput, TextInput } from "../fields";
@@ -15,9 +15,24 @@ function remaining(spent: number, planned: number) {
   return { text: value < 0 ? `+ ${euro.format(-value)} oltre` : euro.format(value), className: value < 0 ? "over" : "ok" };
 }
 
+const otherPayer = (payer: Payer): Payer => (payer === "alberto" ? "sofia" : "alberto");
+
+/** Saldo con segno (>0: Sofia deve ad Alberto) in parole. */
+function balanceText(balance: number) {
+  if (Math.abs(balance) < 0.005) return "siete pari";
+  return balance > 0 ? `Sofia deve ad Alberto ${euro.format(balance)}` : `Alberto deve a Sofia ${euro.format(-balance)}`;
+}
+
+function settlementText(settlement: Settlement) {
+  const from = PAYER_LABELS[settlement.from];
+  const to = PAYER_LABELS[otherPayer(settlement.from)];
+  return settlement.kind === "debito" ? `${from} deve a ${to}` : `${from} ha dato a ${to}`;
+}
+
 export function BudgetSection() {
   const { plan, view, update, log, eur, goTo } = usePlanner();
   const [newCost, setNewCost] = useState({ label: "", amount: "", currency: "EUR" as Currency });
+  const [newSettlement, setNewSettlement] = useState({ kind: "debito" as Settlement["kind"], from: "sofia" as Payer, label: "", amount: "", currency: "EUR" as Currency });
   const { budget } = view;
   const includedLegs = view.legs.filter((leg) => leg.included);
   const pricedItems = plan.scheduleItems.filter((item) => item.price > 0);
@@ -38,6 +53,26 @@ export function BudgetSection() {
     update((current) => ({ ...current, costEntries: [...current.costEntries, entry] }));
     setNewCost((current) => ({ ...current, label: "", amount: "" }));
     log("Costo aggiunto", `${entry.label} · ${formatCost(entry.amount, entry.currency)}`);
+  }
+
+  function addSettlement(event: FormEvent) {
+    event.preventDefault();
+    const amount = Number(newSettlement.amount.replace(",", "."));
+    if (!newSettlement.label.trim() || !(amount > 0)) return;
+    const { kind, from, currency } = newSettlement;
+    const entry: Settlement = { id: uid("conto"), date: new Date().toISOString().slice(0, 10), label: newSettlement.label.trim(), amount, currency, kind, from };
+    update((current) => ({ ...current, settlements: [...current.settlements, entry] }));
+    setNewSettlement((current) => ({ ...current, label: "", amount: "" }));
+    log(kind === "debito" ? "Debito da scalare" : "Rimborso registrato", `${entry.label}: ${settlementText(entry)} ${formatCost(amount, currency)}`);
+  }
+
+  function settleUp() {
+    const entry = settleUpEntry(budget.splitBalance, new Date().toISOString().slice(0, 10));
+    if (!entry) return;
+    const text = `${PAYER_LABELS[entry.from]} dà ${euro.format(entry.amount)} a ${PAYER_LABELS[otherPayer(entry.from)]}`;
+    if (!window.confirm(`${text} e i conti tornano a zero. Registro il saldo?`)) return;
+    update((current) => ({ ...current, settlements: [...current.settlements, entry] }));
+    log("Conti pareggiati", text);
   }
 
   function patchCost(id: string, changes: Partial<(typeof plan.costEntries)[number]>) {
@@ -88,6 +123,7 @@ export function BudgetSection() {
         </div>
         <div className="split-person sofia"><span className="payer-badge sofia">S</span><div><b>Sofia</b><small>ha anticipato</small></div><strong>{euro.format(budget.byPayer.sofia)}</strong></div>
       </div>
+      {plan.settlements.length > 0 && <p className="split-breakdown">Solo spese del viaggio: {balanceText(budget.tripBalance)} · debiti e rimborsi tra voi: {balanceText(budget.settlementsBalance)}</p>}
       {budget.unassigned > 0 && <p className="split-warning">⚠️ {euro.format(budget.unassigned)} di prenotazioni senza «chi ha pagato»: non entrano nel bilancio finché non lo indicate.</p>}
       <div className="expense-register">
         <div className="expense-row auto">
@@ -111,6 +147,33 @@ export function BudgetSection() {
             log("Spesa eliminata", `${expense.label} · ${formatCost(expense.amount, expense.currency)}`);
           }}>Togli</button>
         </div>)}
+      </div>
+      <div className="settle-box">
+        <div className="settle-head">
+          <div><b>Pareggia i conti</b><small>Debiti fuori dal viaggio da scalare (es. l&apos;affitto) e rimborsi già fatti: entrano nel saldo qui sopra.</small></div>
+          {Math.abs(budget.splitBalance) >= 0.005 && <button className="primary" onClick={settleUp}>Salda {euro.format(Math.abs(budget.splitBalance))}</button>}
+        </div>
+        {plan.settlements.length > 0 && <div className="expense-list">
+          {[...plan.settlements].sort((a, b) => `${b.date}${b.id}`.localeCompare(`${a.date}${a.id}`)).map((settlement) => <div className="expense-row" key={settlement.id}>
+            <span className={`payer-badge ${settlement.from}`}>{PAYER_LABELS[settlement.from].charAt(0)}</span>
+            <div><b>{settlement.label}</b><small>{formatShortDate(settlement.date)} · {settlement.kind === "debito" ? "debito da scalare" : "rimborso"} · {settlementText(settlement)}</small></div>
+            <strong>{formatCost(settlement.amount, settlement.currency)}</strong>
+            <button className="danger-text" onClick={() => {
+              update((current) => ({ ...current, settlements: current.settlements.filter((entry) => entry.id !== settlement.id) }));
+              log("Movimento tolto", `${settlement.label} · ${formatCost(settlement.amount, settlement.currency)}`);
+            }}>Togli</button>
+          </div>)}
+        </div>}
+        <form className="add-cost settle-form" onSubmit={addSettlement}>
+          <select aria-label="Tipo di movimento" value={newSettlement.kind} onChange={(event) => setNewSettlement((current) => ({ ...current, kind: event.target.value as Settlement["kind"] }))}><option value="debito">Debito da scalare</option><option value="rimborso">Rimborso già fatto</option></select>
+          <select aria-label="Chi verso chi" value={newSettlement.from} onChange={(event) => setNewSettlement((current) => ({ ...current, from: event.target.value as Payer }))}>
+            {(["sofia", "alberto"] as Payer[]).map((payer) => <option key={payer} value={payer}>{PAYER_LABELS[payer]} {newSettlement.kind === "debito" ? "deve a" : "ha dato a"} {PAYER_LABELS[otherPayer(payer)]}</option>)}
+          </select>
+          <input required aria-label="Motivo" placeholder="Es. Affitto ottobre" value={newSettlement.label} onChange={(event) => setNewSettlement((current) => ({ ...current, label: event.target.value }))} />
+          <input required aria-label="Importo" inputMode="decimal" placeholder="0" value={newSettlement.amount} onChange={(event) => setNewSettlement((current) => ({ ...current, amount: event.target.value }))} />
+          <select aria-label="Valuta" value={newSettlement.currency} onChange={(event) => setNewSettlement((current) => ({ ...current, currency: event.target.value as Currency }))}><option value="EUR">EUR €</option><option value="CNY">CNY ¥</option></select>
+          <button className="primary" type="submit">+ Aggiungi</button>
+        </form>
       </div>
     </article>
 
@@ -141,7 +204,7 @@ export function BudgetSection() {
         <div>{pricedItems.length === 0 ? <p className="empty padded">Aggiungi un costo a un blocco dell’agenda per includerlo nel budget.</p> : [...pricedItems].sort((a, b) => `${a.date}${a.startTime}`.localeCompare(`${b.date}${b.startTime}`)).map((item) => (
           <button className="budget-row" key={item.id} onClick={() => goTo("calendar", { date: item.date, anchor: `plan-${item.id}` })}>
             <span>{view.stopById.get(item.stopId)?.name || "Tappa"}<small>{formatShortDate(item.date)} · {item.startTime}</small></span>
-            <div><b>{item.name}</b><small>{item.bookingStatus === "prenotato" ? "✓ prenotato" : item.bookingStatus === "da-prenotare" ? "da prenotare" : ""}</small></div>
+            <div><b>{item.name}</b><small>{item.bookingStatus === "prenotato" ? `✓ prenotato${item.paidBy ? ` · ha pagato ${PAYER_LABELS[item.paidBy]}` : " · chi ha pagato?"}` : item.bookingStatus === "da-prenotare" ? "da prenotare" : ""}</small></div>
             <strong>{formatCost(item.price, item.currency)}</strong>
           </button>
         ))}</div>

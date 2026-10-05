@@ -141,6 +141,21 @@ export type Expense = {
   category: ExpenseCategory;
 };
 
+/**
+ * Movimento tra Alberto e Sofia che non è una spesa del viaggio: un debito da scalare dal bilancio
+ * (es. l'affitto) oppure un rimborso già fatto per pareggiare i conti.
+ */
+export type Settlement = {
+  id: string;
+  date: string;
+  label: string;
+  amount: number;
+  currency: Currency;
+  /** debito: «from» deve la cifra all'altro; rimborso: «from» l'ha già data all'altro. */
+  kind: "debito" | "rimborso";
+  from: Payer;
+};
+
 export type ChecklistItem = {
   id: string;
   label: string;
@@ -167,6 +182,7 @@ export type PlanData = {
   cnyPerEuro: number;
   costEntries: CostEntry[];
   expenses: Expense[];
+  settlements: Settlement[];
   customCategories: string[];
   dismissedSuggestions: string[];
   coverPhoto: string;
