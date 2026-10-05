@@ -185,6 +185,14 @@ export const initialStops: Stop[] = [
 
 export const SUGGESTED_STOPS: SuggestedStop[] = [
   {
+    // Tappa del piano originale: se l'avete tolta, torna con panda e attività già pronte.
+    ...initialStops.find((stop) => stop.id === "chengdu")!,
+    insertAfterId: "xian",
+    recap: "Panda giganti al mattino, case da tè, opera del Sichuan con il cambio faccia e la cucina più piccante della Cina. Dal 2025 c'è anche l'AV diretta per Zhangjiajie (~4h) che passa da Chongqing.",
+    transport: "AV da Xi'an Nord 3h30–4h; poi Chongqing 1h15–1h45 o Zhangjiajie Ovest diretto ~4h",
+    season: "Fresco e grigio (8–14°C), poca pioggia; panda attivi nelle mattine fredde",
+  },
+  {
     id: "chongqing",
     name: "Chongqing",
     lat: 29.563,
