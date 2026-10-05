@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ARRIVAL_KEY, DEFAULT_TRANSFER_ITEMS, PLAN_VERSION, TRIP_NIGHTS, initialLegs, initialSchedule, initialStops } from "../lib/planner/catalog.ts";
 import {
+  bestInsertionAfter,
   buildCalendar,
   buildTimeline,
   changedKeys,
@@ -277,6 +278,14 @@ test("subito dopo l'aggiornamento, le modifiche dal vecchio sito non si perdono"
   assert.equal(merged.scheduleItems.find((item) => item.id === "d05-terracotta")!.notes, "Guida prenotata");
   // E ciò che va scritto nel cloud include la migrazione (il documento era ancora alla versione 3).
   assert.ok(changedKeys(base, merged).includes("scheduleItems"));
+});
+
+test("un punto cliccato sulla mappa si inserisce dove allunga meno il percorso", () => {
+  const plan = seedPlan();
+  assert.equal(bestInsertionAfter(plan.stops, { lat: 37.2, lng: 112.2 }), "beijing"); // Pingyao, tra Pechino e Xi'an
+  assert.equal(bestInsertionAfter(plan.stops, { lat: 29.56, lng: 106.55 }), "kunming"); // Chongqing, sulla strada Kunming → Zhangjiajie
+  assert.equal(bestInsertionAfter(plan.stops, { lat: 30.27, lng: 120.15 }), "fenghuang"); // Hangzhou, arrivando da ovest prima di Wuzhen
+  assert.notEqual(bestInsertionAfter(plan.stops, { lat: 31.3, lng: 121.6 }), "shanghai");
 });
 
 test("rileva anche le sovrapposizioni non consecutive", () => {

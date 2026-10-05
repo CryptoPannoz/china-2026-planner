@@ -1,26 +1,43 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 import { STOP_ZH, SUGGESTED_STOPS } from "@/lib/planner/catalog";
-import { insertStop, isLockedStop, moveStop, removeStop, scheduleActivity, scheduleKind, setStopNights, stopFromSuggestion, stopRemovalImpact, updateLeg } from "@/lib/planner/model";
-import type { Activity, Stop, SuggestedStop } from "@/lib/planner/types";
+import { bestInsertionAfter, distanceKm, isLockedStop, scheduleActivity, scheduleKind, stopFromSuggestion, updateLeg } from "@/lib/planner/model";
+import type { Activity, PlanData, Stop, SuggestedStop } from "@/lib/planner/types";
 import { euro, formatCost, formatLongDate, formatShortDate, googleMapsSearchUrl, googleMapsStopUrl, plural, slugify, uid, webSearchUrl } from "@/lib/planner/utils";
 import { usePlanner } from "../context";
 import { MoneyInput } from "../fields";
+import { geocodeCity, reverseGeocode } from "../geocode";
 import { RouteMap } from "../RouteMap";
+import { useStopActions } from "../useStopActions";
 
-// Geocoding leggero via OpenStreetMap (serve solo in fase di pianificazione, da casa).
-async function geocodeCity(name: string): Promise<{ lat: number; lng: number } | null> {
-  try {
-    const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=cn&q=${encodeURIComponent(name)}`, { headers: { Accept: "application/json" } });
-    if (!response.ok) return null;
-    const results = await response.json() as Array<{ lat: string; lon: string }>;
-    const lat = Number(results[0]?.lat);
-    const lng = Number(results[0]?.lon);
-    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
-  } catch {
-    return null;
-  }
+/** Città del catalogo con quel nome (es. «Guilin» → Guilin & Yangshuo con le sue attività clou). */
+function catalogMatch(plan: PlanData, name: string) {
+  const slug = slugify(name);
+  const lower = name.toLocaleLowerCase("it");
+  return SUGGESTED_STOPS.find((item) => !plan.stops.some((stop) => stop.id === item.id)
+    && (item.id === slug || item.name.toLocaleLowerCase("it") === lower || item.name.toLocaleLowerCase("it").startsWith(`${lower} `)));
+}
+
+function customStop(plan: PlanData, name: string, place: { lat: number; lng: number; nameZh?: string }): Stop {
+  const slug = slugify(name);
+  const nameZh = place.nameZh || STOP_ZH[slug];
+  return {
+    id: plan.stops.some((stop) => stop.id === slug) || SUGGESTED_STOPS.some((item) => item.id === slug) ? uid("stop") : slug,
+    name,
+    ...(nameZh ? { nameZh } : {}),
+    lat: place.lat,
+    lng: place.lng,
+    nights: 1,
+    hotelNightly: 80,
+    activities: [],
+  };
+}
+
+/** Le proposte del catalogo hanno una posizione consigliata; altrimenti vale la geografia. */
+function suggestedAfter(plan: PlanData, suggestion: SuggestedStop) {
+  const curated = plan.stops.findIndex((stop) => stop.id === suggestion.insertAfterId);
+  return curated >= 0 && curated < plan.stops.length - 1 ? suggestion.insertAfterId : bestInsertionAfter(plan.stops, suggestion);
 }
 
 export function ItinerarySection() {
@@ -34,8 +51,8 @@ export function ItinerarySection() {
     <section className="section-grid">
       <div className="stack">
         <IssuesCard />
-        <StopsCard />
         <MapCard suggestions={suggestions} />
+        <StopsCard />
         <SuggestionsCard suggestions={suggestions} />
       </div>
       <CityPanel />
@@ -70,42 +87,24 @@ function IssuesCard() {
   </article>;
 }
 
+function NightsStepper({ stop }: { stop: Stop }) {
+  const { view } = usePlanner();
+  const actions = useStopActions();
+  return <div className="nights-stepper" onClick={(event) => event.stopPropagation()}>
+    <button type="button" aria-label={`Una notte in meno a ${stop.name}`} disabled={stop.nights <= 1} onClick={() => actions.changeNights(stop, stop.nights - 1)}>−</button>
+    <b>{plural(stop.nights, "notte", "notti")}</b>
+    <button type="button" aria-label={`Una notte in più a ${stop.name}`} className={view.remainingNights <= 0 ? "maxed" : ""} onClick={() => actions.changeNights(stop, stop.nights + 1)}>+</button>
+  </div>;
+}
+
 function StopsCard() {
-  const planner = usePlanner();
-  const { plan, view, selectedStopId, setSelectedStopId, update, notify, log } = planner;
+  const { plan, view, selectedStopId, setSelectedStopId, update, notify, log } = usePlanner();
+  const actions = useStopActions();
   const [form, setForm] = useState({ name: "", nights: 1, afterId: "", donorId: "" });
   const [adding, setAdding] = useState(false);
-  const insertable = plan.stops.filter((stop) => stop.id !== "shanghai");
+  const insertable = plan.stops.slice(0, -1);
   const defaultAfter = insertable.some((stop) => stop.id === selectedStopId) ? selectedStopId : insertable.at(-1)?.id || "beijing";
   const afterId = insertable.some((stop) => stop.id === form.afterId) ? form.afterId : defaultAfter;
-
-  function changeNights(stop: Stop, nights: number) {
-    const preview = setStopNights(plan, stop.id, nights);
-    if (preview.notice) notify(preview.notice);
-    if (!preview.ok) return;
-    update((current) => setStopNights(current, stop.id, nights).plan);
-    log("Notti modificate", `${stop.name}: ${plural(nights, "notte", "notti")}`);
-  }
-
-  function remove(stop: Stop) {
-    const impact = stopRemovalImpact(plan, stop.id);
-    const lines = [`Eliminare ${stop.name} dal piano?`, ""];
-    if (impact.removedItems) lines.push(`• ${plural(impact.removedItems, "blocco in agenda verrà cancellato", "blocchi in agenda verranno cancellati")}`);
-    if (impact.removedStays) lines.push(`• l'hotel non prenotato verrà cancellato`);
-    if (impact.keptItems + impact.keptStays) lines.push(`• ${plural(impact.keptItems + impact.keptStays, "prenotazione già fatta resta", "prenotazioni già fatte restano")} da ricollocare`);
-    if (impact.givenNights && impact.receiver) lines.push(`• ${plural(impact.givenNights, "notte passa", "notti passano")} a ${impact.receiver.name}`);
-    if (!window.confirm(lines.join("\n"))) return;
-    const result = removeStop(plan, stop.id);
-    update((current) => removeStop(current, stop.id).plan);
-    notify(result.notice);
-    log("Tappa eliminata", result.notice);
-    if (selectedStopId === stop.id) setSelectedStopId(impact.receiver?.id || "beijing");
-  }
-
-  function move(stop: Stop, direction: -1 | 1) {
-    update((current) => moveStop(current, stop.id, direction));
-    log("Tappa spostata", `${stop.name} ${direction < 0 ? "prima" : "dopo"}`);
-  }
 
   function toggleLeg(legId: string, included: boolean, label: string) {
     update((current) => updateLeg(current, legId, { included }));
@@ -116,8 +115,7 @@ function StopsCard() {
     event.preventDefault();
     const name = form.name.trim();
     if (!name || adding) return;
-    const slug = slugify(name);
-    const suggestion = SUGGESTED_STOPS.find((item) => item.id === slug || item.name.toLocaleLowerCase("it") === name.toLocaleLowerCase("it"));
+    const suggestion = catalogMatch(plan, name);
     let stop: Stop;
     if (suggestion) {
       stop = stopFromSuggestion(suggestion);
@@ -126,20 +124,9 @@ function StopsCard() {
       const coords = await geocodeCity(name);
       setAdding(false);
       if (!coords) notify(`${name}: coordinate non trovate, il punto sulla mappa è indicativo.`);
-      const id = plan.stops.some((item) => item.id === slug) ? uid("stop") : slug;
-      stop = { id, name, ...(STOP_ZH[slug] ? { nameZh: STOP_ZH[slug] } : {}), lat: coords?.lat ?? 30, lng: coords?.lng ?? 111, nights: 1, hotelNightly: 80, activities: [] };
+      stop = customStop(plan, name, coords || { lat: 30, lng: 111 });
     }
-    const options = { afterId, nights: form.nights, donorId: form.donorId };
-    const preview = insertStop(plan, stop, options);
-    if (!preview.ok) {
-      notify(preview.notice);
-      return;
-    }
-    update((current) => insertStop(current, stop, options).plan);
-    if (preview.notice) notify(preview.notice);
-    setSelectedStopId(stop.id);
-    setForm({ name: "", nights: 1, afterId: "", donorId: "" });
-    log("Tappa aggiunta", `${stop.name} · ${plural(preview.plan.stops.find((item) => item.id === stop.id)?.nights || 1, "notte", "notti")}`);
+    if (actions.add(stop, { afterId, nights: form.nights, donorId: form.donorId })) setForm({ name: "", nights: 1, afterId: "", donorId: "" });
   }
 
   return <article className="card">
@@ -156,16 +143,12 @@ function StopsCard() {
           <div className={`stop-editor ${selectedStopId === stop.id ? "selected" : ""}`} onClick={() => setSelectedStopId(stop.id)}>
             <span className="stop-number">{index + 1}</span>
             <div className="stop-main"><b>{stop.name}</b><small>{formatShortDate(entry.arrival)} → {formatShortDate(entry.departure)}</small></div>
-            <div className="nights-stepper" onClick={(event) => event.stopPropagation()}>
-              <button type="button" aria-label={`Una notte in meno a ${stop.name}`} disabled={stop.nights <= 1} onClick={() => changeNights(stop, stop.nights - 1)}>−</button>
-              <b>{plural(stop.nights, "notte", "notti")}</b>
-              <button type="button" aria-label={`Una notte in più a ${stop.name}`} className={view.remainingNights <= 0 ? "maxed" : ""} onClick={() => changeNights(stop, stop.nights + 1)}>+</button>
-            </div>
+            <NightsStepper stop={stop} />
             <div className="stop-actions" onClick={(event) => event.stopPropagation()}>
               {locked ? <span className="lock">volo</span> : <>
-                <button title="Sposta prima" disabled={index <= 1} onClick={() => move(stop, -1)}>↑</button>
-                <button title="Sposta dopo" disabled={index >= view.timeline.length - 2} onClick={() => move(stop, 1)}>↓</button>
-                <button className="danger" title="Elimina tappa" onClick={() => remove(stop)}>×</button>
+                <button title="Sposta prima" disabled={index <= 1} onClick={() => actions.move(stop, -1)}>↑</button>
+                <button title="Sposta dopo" disabled={index >= view.timeline.length - 2} onClick={() => actions.move(stop, 1)}>↓</button>
+                <button className="danger" title="Elimina tappa" onClick={() => actions.remove(stop)}>×</button>
               </>}
             </div>
           </div>
@@ -180,11 +163,11 @@ function StopsCard() {
         </div>;
       })}
       <form className="add-stop add-stop-rich" onSubmit={addStop}>
-        <input className="add-stop-name" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Aggiungi una città (es. Chongqing, Guilin, Lijiang…)" list="suggested-stop-names" />
+        <input className="add-stop-name" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Aggiungi una città per nome (o toccala sulla mappa)" list="suggested-stop-names" />
         <datalist id="suggested-stop-names">{SUGGESTED_STOPS.filter((suggestion) => !plan.stops.some((stop) => stop.id === suggestion.id)).map((suggestion) => <option key={suggestion.id} value={suggestion.name} />)}</datalist>
         <label>Dopo<select value={afterId} onChange={(event) => setForm((current) => ({ ...current, afterId: event.target.value }))}>{insertable.map((stop) => <option key={stop.id} value={stop.id}>{stop.name}</option>)}</select></label>
         <label>Notti<select value={form.nights} onChange={(event) => setForm((current) => ({ ...current, nights: Number(event.target.value) }))}>{[1, 2, 3, 4, 5].map((nights) => <option key={nights} value={nights}>{nights}</option>)}</select></label>
-        <label>Notti prese da<select value={form.donorId} onChange={(event) => setForm((current) => ({ ...current, donorId: event.target.value }))}><option value="">{view.remainingNights > 0 ? `Notti libere (${view.remainingNights})` : "La tappa prima, poi la più lunga"}</option>{plan.stops.filter((stop) => stop.nights > 1).map((stop) => <option key={stop.id} value={stop.id}>{stop.name} ({stop.nights} notti)</option>)}</select></label>
+        <DonorSelect value={form.donorId} onChange={(donorId) => setForm((current) => ({ ...current, donorId }))} />
         <button type="submit" disabled={adding || !form.name.trim()}>{adding ? "Cerco la città…" : "+ Aggiungi tappa"}</button>
         <small>Le 17 notti sono fisse: la nuova tappa prende le notti da quella scelta (minimo 1 a tappa) e ti avviso di cosa ho spostato.</small>
       </form>
@@ -192,35 +175,179 @@ function StopsCard() {
   </article>;
 }
 
+function DonorSelect({ value, onChange }: { value: string; onChange: (donorId: string) => void }) {
+  const { plan, view } = usePlanner();
+  return <label>Notti prese da<select value={value} onChange={(event) => onChange(event.target.value)}>
+    <option value="">{view.remainingNights > 0 ? `Notti libere (${view.remainingNights})` : "La tappa prima, poi la più lunga"}</option>
+    {plan.stops.filter((stop) => stop.nights > 1).map((stop) => <option key={stop.id} value={stop.id}>{stop.name} ({stop.nights} notti)</option>)}
+  </select></label>;
+}
+
+type NewStopDraft = { kind: "new"; lat: number; lng: number; name: string; nameZh?: string; suggestionId?: string; nights: number; afterId: string; donorId: string; searching: boolean };
+type MapOverlay = { kind: "stop"; stopId: string } | NewStopDraft | null;
+
+/** Pixel entro cui un tocco sulla mappa «aggancia» una tappa o una città da valutare già presenti. */
+const SNAP_PX = 20;
+const metersPerPixel = (zoom: number, lat: number) => 156543.03 * Math.cos(lat * Math.PI / 180) / 2 ** zoom;
+
 function MapCard({ suggestions }: { suggestions: SuggestedStop[] }) {
-  const { plan, view, setSelectedStopId, selectedStopId } = usePlanner();
+  const { plan, view, selectedStopId, setSelectedStopId, update, log } = usePlanner();
+  const actions = useStopActions();
+  const [overlay, setOverlay] = useState<MapOverlay>(null);
+  const [showSuggestions, setShowSuggestions] = useState(true);
+  const requestRef = useRef(0);
+  const visibleSuggestions = useMemo(() => (showSuggestions ? suggestions : []), [showSuggestions, suggestions]);
   const selected = view.stopById.get(selectedStopId) || plan.stops[0];
+  const pendingLat = overlay?.kind === "new" ? overlay.lat : null;
+  const pendingLng = overlay?.kind === "new" ? overlay.lng : null;
+  const pending = useMemo(() => (pendingLat === null || pendingLng === null ? null : { lat: pendingLat, lng: pendingLng }), [pendingLat, pendingLng]);
+
+  function openStop(stopId: string) {
+    requestRef.current++;
+    setSelectedStopId(stopId);
+    setOverlay({ kind: "stop", stopId });
+  }
+
+  function openSuggestion(suggestionId: string) {
+    const suggestion = SUGGESTED_STOPS.find((item) => item.id === suggestionId);
+    if (!suggestion) return;
+    requestRef.current++;
+    // Sulla mappa si ragiona per geografia: la posizione che allunga meno il percorso attuale.
+    setOverlay({ kind: "new", lat: suggestion.lat, lng: suggestion.lng, name: suggestion.name, suggestionId: suggestion.id, nights: suggestion.nights, afterId: bestInsertionAfter(plan.stops, suggestion), donorId: "", searching: false });
+  }
+
+  function pickPoint(lat: number, lng: number, zoom: number) {
+    const point = { lat, lng };
+    const snapKm = SNAP_PX * metersPerPixel(zoom, lat) / 1000;
+    const nearStop = plan.stops.find((stop) => distanceKm(stop, point) <= snapKm);
+    if (nearStop) return openStop(nearStop.id);
+    const nearSuggestion = visibleSuggestions.find((suggestion) => distanceKm(suggestion, point) <= snapKm);
+    if (nearSuggestion) return openSuggestion(nearSuggestion.id);
+    const request = ++requestRef.current;
+    setOverlay({ kind: "new", lat, lng, name: "", nights: 1, afterId: bestInsertionAfter(plan.stops, point), donorId: "", searching: true });
+    void reverseGeocode(lat, lng).then((place) => {
+      if (requestRef.current !== request) return;
+      setOverlay((current) => {
+        if (current?.kind !== "new" || current.suggestionId) return current;
+        const suggestion = place ? catalogMatch(plan, place.name) : undefined;
+        if (suggestion) return { ...current, lat: suggestion.lat, lng: suggestion.lng, name: suggestion.name, suggestionId: suggestion.id, nights: suggestion.nights, searching: false };
+        return { ...current, searching: false, name: current.name || place?.name || "", ...(place?.nameZh ? { nameZh: place.nameZh } : {}), lat: place?.lat ?? current.lat, lng: place?.lng ?? current.lng };
+      });
+    });
+  }
+
+  function confirmNewStop(draft: NewStopDraft) {
+    const name = draft.name.trim();
+    if (!name) return;
+    const suggestion = draft.suggestionId ? SUGGESTED_STOPS.find((item) => item.id === draft.suggestionId) : undefined;
+    const stop = suggestion ? stopFromSuggestion(suggestion) : customStop(plan, name, draft);
+    if (actions.add(stop, { afterId: draft.afterId, nights: draft.nights, donorId: draft.donorId }, "Tappa aggiunta dalla mappa")) setOverlay({ kind: "stop", stopId: stop.id });
+  }
+
+  function dismissSuggestion(suggestionId: string) {
+    const suggestion = SUGGESTED_STOPS.find((item) => item.id === suggestionId);
+    update((current) => ({ ...current, dismissedSuggestions: [...new Set([...current.dismissedSuggestions, suggestionId])] }));
+    if (suggestion) log("Proposta scartata", suggestion.name);
+    setOverlay(null);
+  }
+
   return <article className="card map-card">
-    <div className="card-head"><div><p className="eyebrow">Panoramica itinerario · OpenStreetMap</p><h2>La rotta completa, tappa per tappa</h2></div><span className="subtle">Numeri = tappe · «?» = città da valutare</span></div>
-    <RouteMap stops={plan.stops} legs={view.legs} suggestions={suggestions} onSelect={setSelectedStopId} />
-    <div className="china-map-note">
-      <div><b>Ogni luogo si apre in Google Maps</b><span>Hotel, attività e trasporti hanno il proprio collegamento.</span></div>
-      <a href={googleMapsStopUrl(selected)} target="_blank" rel="noreferrer">Apri {selected.name} in Google Maps ↗</a>
+    <div className="card-head"><div><p className="eyebrow">Mappa dell&apos;itinerario</p><h2>La rotta, tappa per tappa</h2></div><span className="subtle">Tocca un punto per aggiungere una tappa · tocca un numero per gestirla</span></div>
+    <RouteMap
+      stops={plan.stops}
+      legs={view.legs}
+      suggestions={visibleSuggestions}
+      selectedStopId={selectedStopId}
+      pending={pending}
+      onStopClick={openStop}
+      onSuggestionClick={openSuggestion}
+      onMapClick={pickPoint}
+    >
+      {overlay?.kind === "stop" && <StopOverlay stopId={overlay.stopId} onClose={() => setOverlay(null)} />}
+      {overlay?.kind === "new" && <NewStopOverlay draft={overlay} onChange={(patch) => setOverlay((current) => (current?.kind === "new" ? { ...current, ...patch } : current))} onConfirm={() => confirmNewStop(overlay)} onDismissSuggestion={dismissSuggestion} onClose={() => {
+        requestRef.current++;
+        setOverlay(null);
+      }} />}
+    </RouteMap>
+    <div className="map-footer">
+      <div className="map-legend"><span><i /> Tappa</span><span><i className="suggested" /> Da valutare</span><span><i className="route" /> Trasporto</span><span><i className="route off" /> Escluso</span></div>
+      <label className="map-toggle"><input type="checkbox" checked={showSuggestions} onChange={(event) => setShowSuggestions(event.target.checked)} /> Città da valutare</label>
+      <a href={googleMapsStopUrl(selected)} target="_blank" rel="noreferrer">{selected.name} in Google Maps ↗</a>
     </div>
   </article>;
 }
 
+function StopOverlay({ stopId, onClose }: { stopId: string; onClose: () => void }) {
+  const { view, goTo } = usePlanner();
+  const actions = useStopActions();
+  const entry = view.entryById.get(stopId);
+  if (!entry) return null;
+  const { stop, index } = entry;
+  const locked = isLockedStop(stop.id);
+  const arriving = view.legs.find((leg) => leg.toId === stop.id);
+  return <div className="map-overlay" role="dialog" aria-label={`Tappa ${stop.name}`}>
+    <header>
+      <span className="stop-number">{index + 1}</span>
+      <div><b>{stop.name}{stop.nameZh ? <small className="zh"> {stop.nameZh}</small> : null}</b><small>{formatShortDate(entry.arrival)} → {formatShortDate(entry.departure)}{arriving?.included ? ` · arrivo con ${arriving.mode}` : ""}</small></div>
+      <button type="button" className="map-overlay-close" aria-label="Chiudi" onClick={onClose}>×</button>
+    </header>
+    <div className="map-overlay-row">
+      <NightsStepper stop={stop} />
+      {!locked && <div className="stop-actions">
+        <button title="Sposta prima" disabled={index <= 1} onClick={() => actions.move(stop, -1)}>↑</button>
+        <button title="Sposta dopo" disabled={index >= view.timeline.length - 2} onClick={() => actions.move(stop, 1)}>↓</button>
+      </div>}
+    </div>
+    <div className="map-overlay-actions">
+      <button type="button" onClick={() => goTo("calendar", { date: entry.arrival })}>Giornate →</button>
+      <button type="button" onClick={() => goTo("hotels", { stopId: stop.id })}>Hotel →</button>
+      {!locked && <button type="button" className="danger-text" onClick={() => {
+        if (actions.remove(stop)) onClose();
+      }}>Elimina tappa</button>}
+    </div>
+  </div>;
+}
+
+function NewStopOverlay({ draft, onChange, onConfirm, onDismissSuggestion, onClose }: {
+  draft: NewStopDraft;
+  onChange: (patch: Partial<NewStopDraft>) => void;
+  onConfirm: () => void;
+  onDismissSuggestion: (suggestionId: string) => void;
+  onClose: () => void;
+}) {
+  const { plan } = usePlanner();
+  const suggestion = draft.suggestionId ? SUGGESTED_STOPS.find((item) => item.id === draft.suggestionId) : undefined;
+  const insertable = plan.stops.slice(0, -1);
+  return <form className="map-overlay" aria-label="Nuova tappa" onSubmit={(event) => {
+    event.preventDefault();
+    onConfirm();
+  }}>
+    <header>
+      <span className="route-pin pending small">+</span>
+      <div><b>{suggestion ? suggestion.name : "Nuova tappa qui"}</b><small>{suggestion ? `Città da valutare · hotel ~${euro.format(suggestion.hotelNightly)}/notte` : draft.searching ? "Cerco il nome del luogo…" : draft.nameZh || "Scrivi il nome della città"}</small></div>
+      <button type="button" className="map-overlay-close" aria-label="Chiudi" onClick={onClose}>×</button>
+    </header>
+    {suggestion ? <div className="map-overlay-recap"><p>{suggestion.recap}</p><small>🚄 {suggestion.transport}</small></div> : <label className="map-overlay-name">Nome<input autoFocus value={draft.name} placeholder={draft.searching ? "Cerco…" : "Es. Pingyao"} onChange={(event) => onChange({ name: event.target.value })} /></label>}
+    <div className="map-overlay-grid">
+      <label>Dopo<select value={draft.afterId} onChange={(event) => onChange({ afterId: event.target.value })}>{insertable.map((stop, index) => <option key={stop.id} value={stop.id}>{index + 1}. {stop.name}</option>)}</select></label>
+      <label>Notti<select value={draft.nights} onChange={(event) => onChange({ nights: Number(event.target.value) })}>{[1, 2, 3, 4, 5].map((nights) => <option key={nights} value={nights}>{nights}</option>)}</select></label>
+      <DonorSelect value={draft.donorId} onChange={(donorId) => onChange({ donorId })} />
+    </div>
+    <div className="map-overlay-actions">
+      <button type="submit" className="primary" disabled={!draft.name.trim()}>+ Aggiungi tappa</button>
+      {suggestion && <button type="button" className="danger-text" onClick={() => onDismissSuggestion(suggestion.id)}>Scarta</button>}
+      <button type="button" onClick={onClose}>Annulla</button>
+    </div>
+  </form>;
+}
+
 function SuggestionsCard({ suggestions }: { suggestions: SuggestedStop[] }) {
-  const { plan, update, notify, log, setSelectedStopId } = usePlanner();
+  const { plan, update, log } = usePlanner();
+  const actions = useStopActions();
 
   function add(suggestion: SuggestedStop) {
-    const stop = stopFromSuggestion(suggestion);
-    const afterId = plan.stops.some((item) => item.id === suggestion.insertAfterId) && suggestion.insertAfterId !== "shanghai" ? suggestion.insertAfterId : plan.stops.at(-2)?.id || "beijing";
-    const options = { afterId, nights: suggestion.nights, donorId: afterId };
-    const preview = insertStop(plan, stop, options);
-    if (!preview.ok) {
-      notify(preview.notice);
-      return;
-    }
-    update((current) => insertStop(current, stop, options).plan);
-    if (preview.notice) notify(preview.notice);
-    setSelectedStopId(stop.id);
-    log("Tappa aggiunta dalle proposte", `${stop.name} · ${plural(preview.plan.stops.find((item) => item.id === stop.id)?.nights || 1, "notte", "notti")}`);
+    const afterId = suggestedAfter(plan, suggestion);
+    actions.add(stopFromSuggestion(suggestion), { afterId, nights: suggestion.nights, donorId: afterId }, "Tappa aggiunta dalle proposte");
   }
 
   function dismiss(suggestion: SuggestedStop) {

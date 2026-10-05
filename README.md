@@ -16,7 +16,9 @@ Permette di:
 - registrare le **spese effettive con chi ha pagato**, confrontare previsto e speso per categoria e
   vedere il **bilancio stile Splitwise** tra Alberto e Sofia;
 - inserire costi in euro o yuan con cambio modificabile;
-- vedere il percorso su OpenStreetMap e aprire luoghi in Google Maps, con nomi in cinese per il tassista;
+- vedere il percorso sulla mappa (strade, satellite o rilievo) e **aggiungere tappe toccando la mappa**:
+  il nome della città arriva da solo e la tappa va dove allunga meno il percorso;
+- aprire luoghi in Google Maps, con nomi in cinese per il tassista;
 - vedere chi ha modificato cosa e scaricare un backup JSON del piano;
 - lavorare da computer e telefono anche offline: le modifiche si sincronizzano appena torna la rete.
 

@@ -673,6 +673,30 @@ export function insertStop(plan: PlanData, stop: Stop, options: { afterId: strin
   return { plan: refreshDerived({ ...plan, stops, hotelStays }), notice: allocation.notice, ok: true };
 }
 
+/** Distanza in linea d'aria tra due punti, in km. */
+export function distanceKm(from: { lat: number; lng: number }, to: { lat: number; lng: number }) {
+  const rad = Math.PI / 180;
+  const dLat = (to.lat - from.lat) * rad;
+  const dLng = (to.lng - from.lng) * rad;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(from.lat * rad) * Math.cos(to.lat * rad) * Math.sin(dLng / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/** Tappa dopo cui inserire un nuovo punto allungando il meno possibile il percorso (mai dopo l'ultima). */
+export function bestInsertionAfter(stops: Stop[], point: { lat: number; lng: number }) {
+  let bestId = stops[0]?.id || "";
+  let bestDetour = Infinity;
+  stops.slice(0, -1).forEach((stop, index) => {
+    const next = stops[index + 1];
+    const detour = distanceKm(stop, point) + distanceKm(point, next) - distanceKm(stop, next);
+    if (detour < bestDetour) {
+      bestDetour = detour;
+      bestId = stop.id;
+    }
+  });
+  return bestId;
+}
+
 export function stopFromSuggestion(suggestion: SuggestedStop): Stop {
   return {
     id: suggestion.id,
