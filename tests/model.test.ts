@@ -332,3 +332,25 @@ test("refreshDerived non crea copie se nulla cambia", () => {
   assert.equal(refreshDerived(plan), plan);
   assert.ok(sameValue(refreshDerived(clone(plan)), plan));
 });
+
+test("v5: Pechino 3 notti per l'hotel di Xi'an dal 20 nov, poi Chengdu (2) e Chongqing (1)", () => {
+  const seeded = seedPlan();
+  const nights: Record<string, number> = { beijing: 4, xian: 3, zhangjiajie: 4, shanghai: 4 };
+  const saved = clone({
+    ...seeded,
+    itineraryVersion: 4,
+    stops: seeded.stops.filter((stop) => stop.id in nights).map((stop) => ({ ...stop, nights: nights[stop.id] })),
+  });
+  const { plan, notes } = migratePlan(shapePlan(saved)!);
+  assert.deepEqual(
+    buildTimeline(plan.stops).map((entry) => `${entry.stop.id} ${entry.arrival} ${entry.stop.nights}`),
+    ["beijing 2026-11-17 3", "xian 2026-11-20 3", "chengdu 2026-11-23 2", "chongqing 2026-11-25 1", "zhangjiajie 2026-11-26 4", "shanghai 2026-11-30 4"],
+  );
+  assert.ok(plan.stops.find((stop) => stop.id === "chengdu")!.activities.some((activity) => activity.id === "pandas"));
+  assert.ok(plan.hotelStays.some((stay) => stay.stopId === "chongqing"));
+  assert.match(notes.join(" "), /Itinerario definitivo/);
+  // Una volta salvata in v5 non si riapplica, anche se poi togliete una tappa.
+  const again = migratePlan(shapePlan(clone(removeStop(plan, "chongqing").plan))!);
+  assert.ok(!again.plan.stops.some((stop) => stop.id === "chongqing"));
+  assert.deepEqual(again.notes, []);
+});

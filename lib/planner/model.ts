@@ -10,6 +10,7 @@ import {
   LOCKED_STOP_IDS,
   PLAN_VERSION,
   STOP_ZH,
+  SUGGESTED_STOPS,
   TRIP_NIGHTS,
   defaultChecklist,
   initialLegs,
@@ -435,7 +436,7 @@ export function migratePlan(input: PlanData): { plan: PlanData; notes: string[] 
     plan = ensureStopAfter(plan, "chengdu", "xian");
     notes.push("Chengdu reinserita come tappa 3, dopo Xi’an, con treno, hotel e agenda di default.");
   }
-  if (version < PLAN_VERSION) {
+  if (version < 4) {
     plan.scheduleItems = assignDays(plan.scheduleItems, plan.stops);
     const transfers = absorbDefaultTransfers(plan);
     plan.legs = transfers.legs;
@@ -449,6 +450,23 @@ export function migratePlan(input: PlanData): { plan: PlanData; notes: string[] 
       return stay;
     })];
     notes.push(`Agenda agganciata alle tappe: ogni blocco ora segue la sua città quando cambiano le notti${transfers.absorbed ? `; ${plural(transfers.absorbed, "treno/volo doppione spostato", "treni/voli doppioni spostati")} nelle tratte` : ""}.`);
+  }
+
+  if (version === 4) {
+    // v5, itinerario definitivo: l'hotel di Xi'an è prenotato dal 20 nov, quindi Pechino scende a 3 notti
+    // e le notti liberate vanno a Chengdu (2) e Chongqing (1), subito dopo Xi'an.
+    const applied: PlanChange[] = [];
+    const apply = (change: PlanChange) => {
+      if (!change.ok) return;
+      plan = change.plan;
+      applied.push(change);
+    };
+    apply(setStopNights(plan, "beijing", 3));
+    for (const [id, afterId, nights] of [["chengdu", "xian", 2], ["chongqing", "chengdu", 1]] as const) {
+      const suggestion = SUGGESTED_STOPS.find((item) => item.id === id);
+      if (suggestion) apply(insertStop(plan, stopFromSuggestion(suggestion), { afterId, nights, donorId: "shanghai" }));
+    }
+    if (applied.length) notes.push(["Itinerario definitivo: Pechino 3 notti (hotel di Xi’an dal 20 nov), poi Chengdu 2 notti e Chongqing 1.", ...applied.map((change) => change.notice).filter(Boolean)].join(" "));
   }
 
   // Pulizia sempre attiva: niente avanzi di tappe eliminate (tranne ciò che è già prenotato/pagato).

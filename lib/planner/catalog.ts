@@ -5,7 +5,7 @@ export const ARRIVAL_KEY = "2026-11-17";
 export const DEPARTURE_KEY = "2026-12-04";
 export const TRIP_NIGHTS = 17;
 export const FLIGHTS_COST = 1384.44;
-export const PLAN_VERSION = 4;
+export const PLAN_VERSION = 5;
 /** Prima e ultima tappa coincidono con i voli: non si spostano e non si eliminano. */
 export const LOCKED_STOP_IDS = ["beijing", "shanghai"];
 export const DEFAULT_CNY_PER_EURO = 8;
