@@ -6,20 +6,22 @@ gratuito Firebase Spark.
 
 Permette di:
 
-- modificare tappe, notti e trasporti, con la striscia dei 17 giorni sempre visibile;
-- cliccare una città nell’itinerario e vedere subito la sua agenda giorno per giorno;
-- gestire per ogni città le **attività clou** (le imperdibili): aggiungerle, toglierle, cercarle sul web e mandarle in agenda;
-- organizzare ogni giornata per orario, aggiungendo attività e trasferimenti;
-- gestire gli hotel in una sezione indipendente con check-in e check-out;
-- registrare a fine giornata le **spese effettive con chi ha pagato** (Alberto o Sofia);
-- confrontare il **budget pianificato con lo speso reale**, categoria per categoria, con lo scostamento;
-- vedere il **bilancio interno stile Splitwise** tra Alberto e Sofia (tutto diviso a metà);
-- inserire costi in euro oppure yuan e modificare il cambio;
-- vedere l’intero percorso su OpenStreetMap e aprire tappe, attività e hotel direttamente in Amap (punti GPS);
-- vedere chi ha aggiunto, modificato o cancellato cosa;
-- caricare una copertina privata, visibile dopo l'accesso;
-- sincronizzare agenda, budget, checklist e note tra computer e telefono;
-- continuare a lavorare temporaneamente anche senza connessione.
+- modificare tappe e notti (le 17 notti tra i voli sono fisse) con la striscia dei giorni sempre visibile;
+- vedere in **«Da sistemare»** i controlli automatici: notti senza hotel o con due hotel, hotel prenotati
+  con date diverse dalla tappa, attività rimaste senza giornata, orari sovrapposti, tratte escluse;
+- organizzare ogni giornata per orario (lista o vista a ore), spostare un blocco su un altro giorno e
+  mandare in agenda le **attività clou** di ogni città nel primo orario libero;
+- gestire gli hotel tappa per tappa: quelli ancora da prenotare seguono da soli le date della tappa;
+- gestire le tratte tra città con orari, numero treno/volo e prenotazione (compaiono nel giorno giusto);
+- registrare le **spese effettive con chi ha pagato**, confrontare previsto e speso per categoria e
+  vedere il **bilancio stile Splitwise** tra Alberto e Sofia;
+- inserire costi in euro o yuan con cambio modificabile;
+- vedere il percorso su OpenStreetMap e aprire luoghi in Google Maps, con nomi in cinese per il tassista;
+- vedere chi ha modificato cosa e scaricare un backup JSON del piano;
+- lavorare da computer e telefono anche offline: le modifiche si sincronizzano appena torna la rete.
+
+Le attività in agenda sono agganciate alla **tappa e al giorno dentro la tappa**: se cambiano le notti o
+l'ordine delle città, seguono la loro città invece di restare su una data vecchia.
 
 L'accesso con Google è consentito soltanto a:
 
@@ -39,6 +41,24 @@ Richiede Node.js `>=22.13.0`.
 npm install
 npm run dev
 ```
+
+Per provare l'interfaccia senza login e senza toccare i dati veri apri
+<http://localhost:3000/?demo> (solo in sviluppo: i dati restano nel browser).
+
+```bash
+npm test          # logica del planner (date, migrazioni, sincronizzazione, budget)
+npm run lint
+npm run test:build  # compila il sito statico e lo verifica
+```
+
+### Struttura
+
+- `lib/planner/` — logica pura, testata con `node --test`: `catalog.ts` (tappe, proposte, nomi
+  cinesi, piano iniziale), `model.ts` (timeline, migrazioni dei salvataggi, unione con il cloud,
+  operazioni sulle tappe, budget, controlli), `utils.ts` (date, soldi, link).
+- `app/planner/` — interfaccia: `PlannerApp.tsx`, `usePlanSync.ts` (Firestore + copia locale),
+  `sections/` (una sezione per scheda), mappa, griglia oraria, campi che salvano all'uscita.
+- `app/ChinaPlanner.tsx` — accesso con Google.
 
 ## Pubblicazione
 

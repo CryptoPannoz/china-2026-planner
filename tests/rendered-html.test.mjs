@@ -1,253 +1,59 @@
+// Controlli sul sito compilato (`npm run build` prima): export statico, accesso e regole Firestore.
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import test from "node:test";
 
 async function source(path) {
   return readFile(new URL(`../${path}`, import.meta.url), "utf8");
 }
 
-test("esporta il planner come sito pubblico statico", async () => {
-  const [html, config, page, planner] = await Promise.all([
-    source("out/index.html"),
-    source("next.config.ts"),
-    source("app/page.tsx"),
-    source("app/ChinaPlanner.tsx"),
-  ]);
+async function appSources() {
+  const files = ["app/ChinaPlanner.tsx", "lib/firebase.ts"];
+  for (const dir of ["app/planner", "app/planner/sections", "lib/planner"]) {
+    const entries = await readdir(new URL(`../${dir}`, import.meta.url));
+    files.push(...entries.filter((name) => /\.tsx?$/.test(name)).map((name) => `${dir}/${name}`));
+  }
+  return (await Promise.all(files.map(source))).join("\n");
+}
 
+test("esporta il planner come sito statico per GitHub Pages", async () => {
+  const [html, config, page] = await Promise.all([source("out/index.html"), source("next.config.ts"), source("app/page.tsx")]);
   assert.match(html, /Cina 2026 — Alberto &amp; Sofia/);
   assert.match(html, /Caricamento del planner/);
-  assert.match(planner, /Agenda giorno per giorno/);
   assert.match(config, /output:\s*"export"/);
   assert.match(config, /china-2026-planner/);
   assert.doesNotMatch(page, /redirect|cookies|login/i);
 });
 
-test("non contiene Gemini o API server", async () => {
-  const files = await Promise.all([
-    source("app/ChinaPlanner.tsx"),
-    source("next.config.ts"),
-  ]);
-  const combined = files.join("\n");
-
-  assert.doesNotMatch(combined, /gemini|GEMINI_API_KEY|\/api\/gemini/i);
+test("la modalità prova senza login esiste solo in sviluppo", async () => {
+  const planner = await source("app/ChinaPlanner.tsx");
+  assert.match(planner, /process\.env\.NODE_ENV !== "production"/);
 });
 
-test("sincronizza il piano con accesso limitato alle due email", async () => {
-  const [planner, rules, firebaseClient] = await Promise.all([
-    source("app/ChinaPlanner.tsx"),
-    source("firestore.rules"),
-    source("lib/firebase.ts"),
-  ]);
+test("non contiene Gemini o API server", async () => {
+  assert.doesNotMatch(await appSources(), /gemini|GEMINI_API_KEY|\/api\/gemini/i);
+});
 
-  assert.match(planner, /signInWithPopup/);
-  assert.match(planner, /onSnapshot/);
-  assert.match(planner, /setDoc/);
-  assert.match(planner, /Tutto sincronizzato/);
-  assert.match(firebaseClient, /persistentMultipleTabManager/);
+test("accesso e dati limitati alle due email, anche nelle regole Firestore", async () => {
+  const [code, rules] = await Promise.all([appSources(), source("firestore.rules")]);
+  assert.match(code, /signInWithPopup/);
+  assert.match(code, /persistentMultipleTabManager/);
+  assert.match(code, /bebroggi@gmail\.com/);
+  assert.match(code, /sofiakovaleva1998@gmail\.com/);
   assert.match(rules, /bebroggi@gmail\.com/);
   assert.match(rules, /sofiakovaleva1998@gmail\.com/);
   assert.match(rules, /allow read, write: if isPlannerMember/);
   assert.match(rules, /allow read, write: if false/);
-});
-
-test("gestisce costi aggiungibili e rimovibili in euro e yuan", async () => {
-  const planner = await source("app/ChinaPlanner.tsx");
-
-  assert.match(planner, /type Currency = "EUR" \| "CNY"/);
-  assert.match(planner, /Voci di budget pianificate/);
-  assert.match(planner, /removeCostEntry/);
-  assert.match(planner, /cnyPerEuro/);
-  assert.match(planner, /CNY ¥/);
-});
-
-test("registra spese giornaliere con bilancio Alberto/Sofia", async () => {
-  const planner = await source("app/ChinaPlanner.tsx");
-
-  assert.match(planner, /type Payer = "alberto" \| "sofia"/);
-  assert.match(planner, /type Expense = \{/);
-  assert.match(planner, /addExpense/);
-  assert.match(planner, /removeExpense/);
-  assert.match(planner, /Spese effettive del giorno/);
-  assert.match(planner, /splitBalance/);
-  assert.match(planner, /Bilancio Alberto & Sofia/);
-  assert.match(planner, /Scostamento per categoria/);
-  assert.match(planner, /budgetComparison/);
-});
-
-test("mostra agenda per città e attività clou nell'itinerario", async () => {
-  const planner = await source("app/ChinaPlanner.tsx");
-
-  assert.match(planner, /Attività clou/);
-  assert.match(planner, /addClouActivity/);
-  assert.match(planner, /removeClouActivity/);
-  assert.match(planner, /webSearchUrl/);
-  assert.match(planner, /selectedStopDays/);
-  assert.match(planner, /trip-strip/);
-  assert.match(planner, /openDayInAgenda/);
-  assert.match(planner, /scheduleClouOnSelectedDay/);
-  assert.match(planner, /day-clou-chips/);
-});
-
-test("blocca le notti dentro le date fisse dei voli", async () => {
-  const planner = await source("app/ChinaPlanner.tsx");
-
-  assert.match(planner, /changeStopNights/);
-  assert.match(planner, /showNightsNotice/);
-  assert.match(planner, /nightsNotice/);
-  assert.match(planner, /Le date dei voli sono fisse/);
-  assert.match(planner, /allocateNightsForNewStop\(stops, needed/);
-  assert.match(planner, /allocation\.nights < 1/);
-  assert.match(planner, /notti libere/);
-});
-
-test("usa Google Maps al posto di Amap e mostra le proposte sulla mappa", async () => {
-  const planner = await source("app/ChinaPlanner.tsx");
-
-  assert.match(planner, /googleMapsSearchUrl/);
-  assert.match(planner, /googleMapsStopUrl/);
-  assert.match(planner, /google\.com\/maps\/search/);
-  assert.match(planner, /in Google Maps ↗/);
-  assert.doesNotMatch(planner, /amap/i);
-  assert.match(planner, /route-pin suggested/);
-  assert.match(planner, /suggestions=\{visibleSuggestions\}/);
-  assert.match(planner, /Città da valutare · \$\{suggestion\.nights\}/);
-  assert.match(planner, /Da valutare/);
-});
-
-test("l'agenda copre sempre le 17 notti e mostra l'hotel in cinese per il tassista", async () => {
-  const [planner, css] = await Promise.all([
-    source("app/ChinaPlanner.tsx"),
-    source("app/globals.css"),
-  ]);
-
-  assert.match(planner, /Da pianificare/);
-  assert.match(planner, /type: "free"/);
-  assert.match(planner, /night = usedNights; night < TRIP_NIGHTS/);
-  assert.match(planner, /nameZh/);
-  assert.match(planner, /addressZh/);
-  assert.match(planner, /Mostra in cinese/);
-  assert.match(planner, /taxi-overlay/);
-  assert.match(planner, /请送我们到这家酒店/);
-  assert.match(css, /\.day-strip-wrap \{ position: sticky/);
-  assert.match(css, /\.taxi-card/);
-});
-
-test("restyle: hero essenziale, font unico, cinese e biglietti nelle attività", async () => {
-  const [planner, css] = await Promise.all([
-    source("app/ChinaPlanner.tsx"),
-    source("app/globals.css"),
-  ]);
-
-  assert.doesNotMatch(planner, /Piano operativo/);
-  assert.doesNotMatch(planner, /Ogni giorno\./);
-  assert.match(planner, /hero-bar/);
-  assert.match(planner, /day-strip-current/);
-  assert.match(planner, /ticketUrl/);
-  assert.match(planner, /Link biglietto \/ PDF/);
-  assert.match(planner, /translate\.google\.com/);
-  assert.match(planner, /STOP_ZH/);
-  assert.match(planner, /ACTIVITY_ZH/);
-  assert.match(planner, /enrichStopsZh/);
-  assert.match(planner, /schedule-more/);
-  assert.match(planner, /故宫博物院/);
-  assert.doesNotMatch(css, /Georgia, serif/);
-  assert.match(css, /--sans:/);
-});
-
-test("propone varianti di tappe aggiungibili o scartabili", async () => {
-  const planner = await source("app/ChinaPlanner.tsx");
-
-  assert.match(planner, /SUGGESTED_STOPS/);
-  assert.match(planner, /addSuggestedStop/);
-  assert.match(planner, /dismissSuggestion/);
-  assert.match(planner, /restoreSuggestions/);
-  assert.match(planner, /dismissedSuggestions/);
-  assert.match(planner, /Città da valutare/);
-  assert.match(planner, /id: "chongqing"/);
-  assert.match(planner, /id: "guilin"/);
-  assert.match(planner, /id: "lijiang"/);
-  assert.match(planner, /id: "dali"/);
-  assert.match(planner, /id: "emeishan"/);
-  assert.match(planner, /id: "xiamen"/);
-  assert.match(planner, /id: "hangzhou"/);
-  assert.match(planner, /id: "huangshan"/);
-});
-
-test("struttura agenda, mappe e registro condiviso", async () => {
-  const [planner, rules] = await Promise.all([
-    source("app/ChinaPlanner.tsx"),
-    source("firestore.rules"),
-  ]);
-
-  assert.match(planner, /type ScheduleKind = "activity" \| "transport" \| "hotel"/);
-  assert.match(planner, /Crea categoria/);
-  assert.match(planner, /Aggiungi trasferimento/);
-  assert.match(planner, /Google Maps ↗/);
-  assert.match(planner, /Ultimo autosalvataggio/);
-  assert.match(planner, /Chi ha modificato cosa/);
-  assert.match(planner, /compressCoverPhoto/);
-  assert.match(planner, /type HotelStay/);
-  assert.match(planner, /Hotel e soggiorni/);
-  assert.match(planner, /Data check-in/);
-  assert.match(planner, /Data check-out/);
-  assert.match(planner, /selectedDayHotels/);
-  assert.doesNotMatch(planner, /Link condiviso WeChat/);
-  assert.doesNotMatch(planner, /Link condiviso Alipay/);
-  assert.match(planner, /googleMapsStopUrl/);
-  assert.match(planner, /Panoramica itinerario · OpenStreetMap/);
-  assert.match(planner, /La rotta completa, tappa per tappa/);
-  assert.match(planner, /fitBounds/);
-  assert.doesNotMatch(planner, /<option value="hotel">Hotel \/ notte<\/option>/);
-  assert.match(rules, /change-log/);
-  assert.match(rules, /allow read, create: if isPlannerMember/);
   assert.match(rules, /allow update, delete: if false/);
 });
 
-test("include la nuova copertina fotografica", async () => {
-  const [planner, image] = await Promise.all([
-    source("app/ChinaPlanner.tsx"),
-    readFile(new URL("../public/china-hero-couple.jpg", import.meta.url)),
-  ]);
+test("usa Google Maps e OpenStreetMap, non Amap", async () => {
+  const code = await appSources();
+  assert.match(code, /google\.com\/maps\/search/);
+  assert.doesNotMatch(code, /amap/i);
+});
 
-  assert.match(planner, /china-hero-couple\.jpg/);
+test("include la copertina fotografica", async () => {
+  const image = await readFile(new URL("../public/china-hero-couple.jpg", import.meta.url));
   assert.ok(image.byteLength > 100_000);
-});
-
-test("ripristina una sola volta l’itinerario completo nei piani già salvati", async () => {
-  const planner = await source("app/ChinaPlanner.tsx");
-
-  assert.match(planner, /ITINERARY_SCHEMA_VERSION = 3/);
-  assert.match(planner, /FULL_RESTORE_VERSION = 2/);
-  assert.match(planner, /mergeStopsWithDefaults/);
-  assert.match(planner, /mergeById\(initialSchedule\.map\(normalizeScheduleItem\), normalizedSchedule\)/);
-  assert.match(planner, /"Itinerario ripristinato"/);
-});
-
-test("reinserisce Chengdu dopo Xi’an nei piani salvati che l’hanno persa", async () => {
-  const planner = await source("app/ChinaPlanner.tsx");
-
-  assert.match(planner, /ensureStopAfter\("chengdu", "xian"/);
-  assert.match(planner, /id: "xian-chengdu", fromId: "xian", toId: "chengdu"/);
-  assert.match(planner, /id: "chengdu-kunming", fromId: "chengdu", toId: "kunming"/);
-  assert.match(planner, /Chengdu reinserita come tappa 3/);
-  assert.match(planner, /id: "d01-arrival"/);
-  assert.match(planner, /id: "d17-tower"/);
-  assert.match(planner, /id: "beijing"/);
-  assert.match(planner, /id: "shanghai"/);
-});
-
-test("aggiunge tappe riallocando le notti e prenota le tratte con orari", async () => {
-  const planner = await source("app/ChinaPlanner.tsx");
-
-  assert.match(planner, /allocateNightsForNewStop/);
-  assert.match(planner, /insertStopAfter/);
-  assert.match(planner, /geocodeCity/);
-  assert.match(planner, /Notti prese da/);
-  assert.match(planner, /departureTime\?: string/);
-  assert.match(planner, /serviceNumber/);
-  assert.match(planner, /legDateFor/);
-  assert.match(planner, /Tratta del giorno/);
-  assert.match(planner, /function HourGrid/);
-  assert.match(planner, /agendaView === "hours"/);
-  assert.match(planner, /category: "trasporti" as ExpenseCategory/);
 });

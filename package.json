@@ -8,8 +8,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs",
-    "lint": "eslint . --ignore-pattern .next"
+    "test": "node --experimental-strip-types --test tests/model.test.ts",
+    "lint": "eslint . --ignore-pattern .next",
+    "test:build": "npm run build && node --test tests/rendered-html.test.mjs"
   },
   "dependencies": {
     "firebase": "^12.16.0",

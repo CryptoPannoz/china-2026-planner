@@ -31,6 +31,8 @@ jobs:
         run: npm ci
       - name: Controlla il codice
         run: npm run lint
+      - name: Verifica la logica del planner
+        run: npm test
       - name: Crea il sito statico
         run: npm run build
       - name: Prepara i file da pubblicare
