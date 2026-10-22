@@ -92,7 +92,9 @@ export function usePlanSync(user: User | null, demo: boolean) {
   useEffect(() => {
     if (demo || !user) return;
     let initialized = false;
-    return onSnapshot(planDocument(), async (snapshot) => {
+    // Anche i soli metadati: dopo un ricaricamento il primo dato arriva dalla cache e, se il server
+    // conferma la stessa copia, senza questo l'etichetta resterebbe su «Offline».
+    return onSnapshot(planDocument(), { includeMetadataChanges: true }, async (snapshot) => {
       // Eco delle nostre scritture ancora in volo: lo stato locale è già più aggiornato.
       if (initialized && snapshot.metadata.hasPendingWrites) return;
       if (!snapshot.exists()) {
