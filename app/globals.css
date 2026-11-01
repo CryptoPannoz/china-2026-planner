@@ -386,13 +386,33 @@ h3 { margin-bottom: 12px; font: 800 17px/1.15 var(--sans); letter-spacing: -.01e
 
 .planner-grid { display: grid; grid-template-columns: .82fr 1.18fr; gap: 18px; align-items: start; padding-bottom: 60px; }
 .planner-grid.simple { grid-template-columns: minmax(0, 760px); justify-content: center; }
-.checklist { padding: 8px 20px 15px; }
-.checklist label { padding: 11px 0; display: flex; gap: 10px; align-items: center; border-bottom: 1px solid var(--line); cursor: pointer; }
-.checklist input { width: 17px; height: 17px; accent-color: var(--green); }
-.checklist input:checked + span { color: #9a9d99; text-decoration: line-through; }
-.checklist label .danger-text { margin-left: auto; flex: 0 0 auto; }
+.checklist-source { margin: 0; padding: 12px 20px 0; color: var(--muted); font-size: 12px; }
+.checklist-source a { color: var(--green); font-weight: 800; }
+.checklist { padding: 4px 20px 15px; }
+.check-group-head { padding: 18px 0 8px; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; border-bottom: 2px solid var(--ink); }
+.check-group-head h3 { margin: 0; font-size: 15px; }
+.check-group-head p { margin: 2px 0 0; color: var(--muted); font-size: 11px; }
+.check-group-head > span { color: var(--muted); font-size: 11px; font-weight: 800; white-space: nowrap; }
+.check-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; align-items: center; border-bottom: 1px solid var(--line); }
+.check-row label { padding: 11px 0; display: flex; gap: 10px; align-items: center; cursor: pointer; }
+.check-row input { flex: 0 0 auto; width: 17px; height: 17px; accent-color: var(--green); }
+.check-row input:checked + span { color: #9a9d99; text-decoration: line-through; }
+.check-row em { font-style: normal; font-size: 11px; font-weight: 800; }
+.check-meta { display: flex; gap: 4px; align-items: center; justify-content: flex-end; }
+.check-due { color: var(--muted); font-size: 10px; font-weight: 850; white-space: nowrap; }
+.check-due.soon { color: var(--orange); }
+.check-due.late { color: #a23f29; }
+.check-hint-toggle, .check-skip { padding: 7px 6px; border: 0; background: transparent; font-size: 10px; font-weight: 800; white-space: nowrap; cursor: pointer; }
+.check-hint-toggle { color: var(--green); }
+.check-skip { color: var(--muted); }
+.check-hint { grid-column: 1 / -1; margin: -3px 0 12px 27px; padding: 10px 12px; border-radius: 10px; color: #3f4d46; background: var(--green-soft); font-size: 12px; line-height: 1.5; }
+.check-hint p { margin: 0; }
+.check-hint ul { margin: 6px 0 0; padding-left: 17px; }
 .add-checklist { padding: 0 20px 18px; display: flex; gap: 8px; }
-.add-checklist input { flex: 1; min-width: 0; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: white; font-size: 13px; }
+.add-checklist input, .add-checklist select { min-width: 0; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: white; font-size: 13px; }
+.add-checklist input { flex: 1; }
+.add-checklist select { flex: 0 1 150px; }
+.prep-facts { margin: 0; padding: 14px 20px 18px 38px; display: grid; gap: 7px; font-size: 13px; }
 .notes-card textarea { width: 100%; min-height: 220px; padding: 18px 20px; border: 0; resize: vertical; background: transparent; outline: 0; }
 .link-list { padding: 8px 20px 4px; display: grid; gap: 8px; }
 .link-list .empty { margin: 6px 0 10px; }
@@ -770,6 +790,15 @@ h3 { margin-bottom: 12px; font: 800 17px/1.15 var(--sans); letter-spacing: -.01e
 }
 
 @media (max-width: 560px) {
+  .check-row { grid-template-columns: minmax(0, 1fr); }
+  .check-row label { padding-bottom: 2px; }
+  .check-meta { margin: 0 0 6px 27px; justify-content: flex-start; gap: 10px; }
+  .check-meta > * { padding-left: 0; padding-right: 0; }
+  .check-meta:empty { display: none; }
+  .check-row label:has(+ .check-meta:empty) { padding-bottom: 11px; }
+  .check-hint { margin-left: 0; }
+  .add-checklist { flex-wrap: wrap; }
+  .add-checklist select { flex: 1 1 100%; }
   .add-stop-rich { grid-template-columns: 1fr 1fr; }
   .add-stop-rich button { grid-column: 1 / -1; }
   .transport-fields.booking { grid-template-columns: 1fr 1fr; }

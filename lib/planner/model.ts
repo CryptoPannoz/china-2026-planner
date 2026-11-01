@@ -9,8 +9,10 @@ import {
   KNOWN_LEG_PRESETS,
   LOCKED_STOP_IDS,
   PLAN_VERSION,
+  PREP_CHECKLIST,
   STOP_ZH,
   SUGGESTED_STOPS,
+  TRAIN_SALE_DAYS,
   TRIP_NIGHTS,
   defaultChecklist,
   initialLegs,
@@ -103,6 +105,16 @@ export function buildCalendar(timeline: TimelineEntry[], legs: Leg[]): CalendarD
 /** Ogni tratta parte il giorno in cui si lascia la città di partenza (= arrivo nella successiva). */
 export function legDate(timeline: TimelineEntry[], leg: Leg) {
   return timeline.find((entry) => entry.stop.id === leg.fromId)?.departure || "";
+}
+
+/** Treni ancora da prenotare, con il giorno in cui 12306 ne apre le vendite. */
+export function trainSaleWindows(legs: Leg[], legDateOf: (leg: Leg) => string) {
+  return legs
+    .filter((leg) => /🚄|treno/i.test(leg.mode) && leg.bookingStatus !== "prenotato")
+    .map((leg) => ({ leg, date: legDateOf(leg) }))
+    .filter(({ date }) => isDateKey(date))
+    .map(({ leg, date }) => ({ leg, date, opensOn: addDaysKey(date, -TRAIN_SALE_DAYS) }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 // ---------------------------------------------------------------------------
@@ -486,6 +498,17 @@ export function migratePlan(input: PlanData): { plan: PlanData; notes: string[] 
       }))
       : [...plan.scheduleItems, { ...normalizeScheduleItem(original), ...tour, id: "forbidden-tour", day: 1, price: 0, notes: tourNote }];
     notes.push("Tour della Città Proibita segnato come prenotato: aggiungete prezzo e chi ha pagato in agenda.");
+  }
+
+  if (version < 7) {
+    // v7: i to-do della lista «Prepare» (eSIM, Alipay, treni, arrivo…) entrano in checklist. Solo quelli
+    // che mancano: se una vecchia app riscrive la versione, spunte e «non serve» restano come sono.
+    const present = new Set(plan.extraChecklist.map((item) => item.id));
+    const missing = PREP_CHECKLIST.filter((item) => !present.has(item.id));
+    if (missing.length) {
+      plan.extraChecklist = [...plan.extraChecklist, ...missing.map(({ id, label, group }) => ({ id, label, group, done: false }))];
+      notes.push(`Checklist ampliata con ${plural(missing.length, "punto", "punti")} dalla lista «Prepare» di chi in Cina c’è già stato: eSIM, Alipay, mappe, treni e arrivo.`);
+    }
   }
 
   // Pulizia sempre attiva: niente avanzi di tappe eliminate (tranne ciò che è già prenotato/pagato).

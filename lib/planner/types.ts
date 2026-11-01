@@ -156,10 +156,24 @@ export type Settlement = {
   from: Payer;
 };
 
+export type ChecklistGroup = "pianificazione" | "a-casa" | "ultima-settimana" | "arrivo" | "altro";
+
 export type ChecklistItem = {
   id: string;
   label: string;
   done: boolean;
+  group?: ChecklistGroup;
+  /** «Non serve»: conta come sistemato (done resta true per le app più vecchie). */
+  skipped?: boolean;
+};
+
+/** Punto di preparazione di catalogo: scadenza e consigli restano nel codice, nel piano solo lo stato. */
+export type PrepItem = {
+  id: string;
+  label: string;
+  group: ChecklistGroup;
+  due?: string;
+  hint?: string;
 };
 
 export type TripLink = {

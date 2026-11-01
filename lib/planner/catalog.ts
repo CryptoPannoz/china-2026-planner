@@ -1,11 +1,11 @@
-import type { ExpenseCategory, Leg, Payer, ScheduleItem, ScheduleKind, Stop, SuggestedStop } from "./types.ts";
+import type { ChecklistGroup, ExpenseCategory, Leg, Payer, PrepItem, ScheduleItem, ScheduleKind, Stop, SuggestedStop } from "./types.ts";
 
 // Date fisse dei voli intercontinentali: arrivo a Pechino e partenza da Shanghai.
 export const ARRIVAL_KEY = "2026-11-17";
 export const DEPARTURE_KEY = "2026-12-04";
 export const TRIP_NIGHTS = 17;
 export const FLIGHTS_COST = 1384.44;
-export const PLAN_VERSION = 6;
+export const PLAN_VERSION = 7;
 /** Prima e ultima tappa coincidono con i voli: non si spostano e non si eliminano. */
 export const LOCKED_STOP_IDS = ["beijing", "shanghai"];
 export const DEFAULT_CNY_PER_EURO = 8;
@@ -661,15 +661,81 @@ export const initialSchedule: ScheduleItem[] = [
   { id: "d17-tower", date: "2026-12-03", stopId: "shanghai", startTime: "16:00", endTime: "19:00", name: "Shanghai Tower e ultima cena", category: "visita", location: "Lujiazui", notes: "Scegliere fascia tramonto; preparare i bagagli prima di uscire.", price: 45, bookingStatus: "da-prenotare", sourceActivityId: "tower" },
 ];
 
-export const defaultChecklist = [
-  "Confermare ritmo e tappe insieme",
-  "Prenotare hotel cancellabili",
-  "Risolvere Kunming → Zhangjiajie",
-  "Risolvere Fenghuang → Wuzhen",
-  "Prenotare ingressi di Pechino",
-  "Verificare visto / ingresso in Cina",
-  "Preparare eSIM, VPN e mappe offline",
-  "Confermare assicurazione viaggio",
+// ---------------------------------------------------------------------------
+// Checklist di preparazione
+// ---------------------------------------------------------------------------
+
+export const CHECKLIST_GROUPS: Array<{ id: ChecklistGroup; title: string; subtitle: string }> = [
+  { id: "pianificazione", title: "Prima di prenotare", subtitle: "Da decidere prima di bloccare hotel e treni" },
+  { id: "a-casa", title: "A casa, prima di partire", subtitle: "Dalla Cina è impossibile (siti e store bloccati) o una pessima idea" },
+  { id: "ultima-settimana", title: "Ultima settimana", subtitle: "Finestre di vendita e controlli finali" },
+  { id: "arrivo", title: "All’arrivo", subtitle: "Le prime ore in Cina" },
+  { id: "altro", title: "Altro", subtitle: "Punti aggiunti da voi" },
+];
+
+/** Lista «Prepare» di chi in Cina c’è già stato, da cui vengono i punti PREP_CHECKLIST. */
+export const PREP_SOURCE_URL = "https://china.adormo.com/v2/prepare";
+/** 12306 apre le vendite dei treni 15 giorni prima della partenza. */
+export const TRAIN_SALE_DAYS = 15;
+
+/** Spunte salvate per posizione in `checklist`: non riordinare, solo aggiungere in fondo. */
+export const defaultChecklist: Array<Omit<PrepItem, "id">> = [
+  { label: "Confermare ritmo e tappe insieme", group: "pianificazione" },
+  { label: "Prenotare hotel cancellabili", group: "pianificazione", hint: "Solo hotel che accettano stranieri: Trip.com e Booking mostrano solo quelli, e al check-in fanno loro la registrazione in polizia. La cancellazione gratuita scade spesso a mezzogiorno (ora cinese) del giorno prima, non a mezzanotte." },
+  { label: "Risolvere Kunming → Zhangjiajie", group: "pianificazione" },
+  { label: "Risolvere Fenghuang → Wuzhen", group: "pianificazione" },
+  { label: "Prenotare ingressi di Pechino", group: "ultima-settimana", due: "2026-11-10", hint: "Città Proibita: tour già prenotato. I musei nazionali sono gratuiti ma su prenotazione (WeChat o sito) con il numero di passaporto di ognuno; molti chiudono il lunedì." },
+  { label: "Verificare visto / ingresso in Cina", group: "pianificazione", due: "2026-11-03", hint: "Passaporto italiano: niente visto fino a 30 giorni (politica unilaterale, per ingressi fino al 31/12/2026), e 17 nov → 4 dic ci sta. È una politica, non un diritto: ricontrollare lista e scadenza sul sito dell’ambasciata prima di partire." },
+  { label: "Preparare eSIM, VPN e mappe offline", group: "a-casa", due: "2026-11-03", hint: "I passaggi, uno per uno, sono qui sotto." },
+  { label: "Confermare assicurazione viaggio", group: "a-casa", due: "2026-11-10", hint: "Con copertura medica: in Cina le cure si pagano subito. A viaggio iniziato non si può più comprare. Numero di polizza e dell’assistenza in una nota leggibile anche offline." },
+];
+
+/** Punti aggiunti alla checklist dalla migrazione v7; gli id non vanno cambiati. */
+export const PREP_CHECKLIST: PrepItem[] = [
+  { id: "prep-passport", group: "pianificazione", due: "2026-11-03", label: "Passaporti validi almeno 6 mesi dopo il rientro (oltre il 4 giugno 2027)", hint: "Se uno dei due scade prima va rinnovato subito: senza, niente ingresso." },
+  { id: "prep-papers", group: "pianificazione", due: "2026-11-14", label: "Volo di ritorno e primo hotel salvati offline (o stampati)", hint: "All’immigrazione possono chiederli; servono anche per la arrival card." },
+
+  { id: "prep-esim-buy", group: "a-casa", due: "2026-11-03", label: "Comprare un’eSIM roaming per tutti e due (Nomad o BNESIM)", hint: "I dati in roaming escono all’estero e non passano dal firewall: Google, WhatsApp e Instagram funzionano senza VPN. Dalla Cina i siti e gli store delle eSIM sono bloccati. BNESIM costa molto meno di Holafly e Airalo (provata a ottobre 2026); per Nomad il codice BBIYPGMWJSLW dà 5 USD di sconto." },
+  { id: "prep-esim-install", group: "a-casa", due: "2026-11-03", label: "Installare l’eSIM a casa, da accendere all’atterraggio", hint: "L’installazione richiede internet: farla in Italia su entrambi i telefoni e controllare che compaia come seconda linea dati." },
+  { id: "prep-home-sim", group: "a-casa", due: "2026-11-03", label: "SIM italiana attiva in roaming per gli SMS, ma con i dati spenti", hint: "Ogni app cinese manda un codice via SMS al numero italiano. Doppia SIM: eSIM per i dati, SIM italiana per chiamate e codici, con i dati in roaming disattivati per non pagare il roaming extra-UE." },
+  { id: "prep-vpn", group: "a-casa", due: "2026-11-03", label: "Una VPN a pagamento di riserva, installata e provata", hint: "LetsVPN, ExpressVPN o Astrill; quelle gratuite in Cina quasi mai funzionano. Claude, ChatGPT e molte banche bloccano le VPN (IP da datacenter) e a volte anche l’uscita a Hong Kong dell’eSIM." },
+  { id: "prep-alipay", group: "a-casa", due: "2026-11-03", label: "Alipay su entrambi i telefoni: passaporto verificato e carta collegata", hint: "Registrazione con il numero di telefono, foto del passaporto e selfie, poi Visa/Mastercard; se l’app lo consente, una piccola ricarica di prova. Farlo a casa: la verifica può bloccarsi per ore o chiedere l’app della banca. Le mini-app di Alipay (metro, DiDi, biglietti) sostituiscono mezza dozzina di app." },
+  { id: "prep-wechat", group: "a-casa", due: "2026-11-03", label: "WeChat Pay attivo (Io → Servizi → Portafoglio)", hint: "Stessa carta di Alipay. Serve anche per i mini-programmi di musei e biglietti." },
+  { id: "prep-cards", group: "a-casa", due: "2026-11-03", label: "Carte fisiche in valigia, non solo Apple/Google Pay", hint: "Con carta estera Alipay e WeChat sono gratis fino a ¥200 a pagamento; oltre si paga il 3% su tutto (un hotel da ¥2.000 costa ¥60 in più). Sopra ¥200 meglio la carta fisica: hotel, ristoranti e grandi negozi la prendono anche se non lo dicono, con PIN e spesso firma. Il pagamento dal telefono è spesso rifiutato." },
+  { id: "prep-gaode", group: "a-casa", due: "2026-11-10", label: "Mappe Gaode (高德地图) installate, con il numero italiano o l’Apple ID", hint: "Google Maps è bloccato e in Cina sfasato di centinaia di metri; anche Mappe di Apple funziona (usa i dati di Gaode). Iscriversi dall’app, non dal sito, con il +39: i luoghi salvati restano nell’account. Se il codice non arriva, usarla senza account." },
+  { id: "prep-didi", group: "a-casa", due: "2026-11-10", label: "Aprire una volta DiDi dentro Alipay (mini-programma in inglese)", hint: "Meglio della app separata: paga dal portafoglio. Per il tassista c’è «🚕 Mostra in cinese» sugli hotel di questo planner." },
+  { id: "prep-metro", group: "a-casa", due: "2026-11-10", label: "Scaricare MetroMan (metro in inglese, anche offline)", hint: "Ai tornelli si passa con il QR «Transport» (乘车码) di Alipay, da attivare città per città; a Pechino e Shanghai va anche la carta contactless." },
+  { id: "prep-translate", group: "a-casa", due: "2026-11-10", label: "Scaricare il cinese offline di Google Traduttore", hint: "Dalla Cina è impossibile: Google è bloccato. Come riserva Baidu Translate o Traduci di Apple (anche con la fotocamera per i menu); Pleco per i caratteri." },
+  { id: "prep-phrases", group: "a-casa", due: "2026-11-10", label: "Imparare cinque frasi", hint: "你好 nǐ hǎo, ciao · 谢谢 xièxie, grazie · 这个 zhège, questo · 多少钱 duōshao qián, quanto costa · 不用 búyòng, non serve." },
+  { id: "prep-meds", group: "a-casa", due: "2026-11-10", label: "Farmaci abituali in confezione originale, con copia della ricetta", hint: "Più paracetamolo, cerotti, sali reidratanti e qualcosa per lo stomaco: in farmacia le marche sono diverse." },
+  { id: "prep-air", group: "a-casa", due: "2026-11-10", label: "Due mascherine KN95 e un’app per la qualità dell’aria", hint: "A fine novembre al nord (Pechino, Xi’an) l’aria può essere pessima." },
+  { id: "prep-cash", group: "a-casa", due: "2026-11-14", label: "Un po’ di contanti: ¥500–1.000", hint: "Per i rari mercati o taxi solo contanti. I bancomat di Bank of China, ICBC e CCB prendono le carte estere; in città il cambio è migliore che in aeroporto. Oltre 5.000 USD (o ¥20.000) vanno dichiarati all’ingresso." },
+  { id: "prep-powerbank", group: "a-casa", due: "2026-11-14", label: "Power bank sotto 100 Wh e con il marchio 3C", hint: "Dal 2025 sui voli interni quelli senza 3C vengono sequestrati ai controlli, e anche in stazione controllano la capacità. Sempre nel bagaglio a mano. In alternativa se ne compra uno lì (Xiaomi, Anker China, ~¥100)." },
+  { id: "prep-adapter", group: "a-casa", due: "2026-11-14", label: "Un adattatore universale a testa, caricatore e cavo", hint: "220 V / 50 Hz: i caricatori di telefono e PC vanno bene. Le spine europee piatte a due poli e quelle USA entrano; Schuko e tre poli no." },
+  { id: "prep-tissues", group: "a-casa", due: "2026-11-14", label: "Fazzoletti e gel per le mani in borsa", hint: "Bagni pubblici gratuiti e frequenti, ma spesso alla turca e senza carta." },
+
+  { id: "prep-12306", group: "ultima-settimana", due: "2026-11-04", label: "Registrarsi a Railway 12306 dall’app, non dal sito", hint: "All’iscrizione l’app mostra un banner per stranieri: scansiona il passaporto e compila il modulo. L’e-mail di conferma può non arrivare mai: entrare comunque dall’app. Dal sito si resta chiusi fuori. 12306 non ha commissioni, Trip.com ~€6–7 a biglietto." },
+  { id: "prep-trains", group: "ultima-settimana", label: "Prenotare i treni veloci appena aprono le vendite", hint: "Il passaporto è il biglietto: si scansiona al tornello. Arrivare 45–60 minuti prima (controllo documenti e bagagli) e controllare la stazione: Beijing West ≠ Beijing South." },
+  { id: "prep-tickets", group: "ultima-settimana", due: "2026-11-10", label: "Prenotare le altre visite a numero chiuso (Terracotta, panda, musei)", hint: "Serve il numero di passaporto di ognuno e i posti famosi finiscono pochi minuti dopo l’uscita: segnarsi giorno e ora e farsi trovare pronti. Su Trip.com a volte la voce è un tour o un combo: leggere cosa include. Panda: la base di Wolong è a ~2 h di bus da Chengdu, bellissima e quasi vuota (ottobre 2026)." },
+  { id: "prep-airport", group: "ultima-settimana", due: "2026-11-14", label: "Studiare il tragitto aeroporto → primo hotel di Pechino", hint: "Terminal d’arrivo e orari di metro/Airport Express (molti chiudono verso le 22–23), poi DiDi da Alipay o la fila dei taxi ufficiali. Rifiutare chi vi avvicina in sala arrivi. L’indirizzo in cinese è in «🚕 Mostra in cinese» nella scheda hotel." },
+  { id: "prep-arrival-card", group: "ultima-settimana", due: "2026-11-16", label: "Compilare online la arrival card (dal 14 nov)", hint: "Nei 3 giorni prima dell’arrivo: sito s.nia.gov.cn, app NIA 12367 o mini-programma Alipay/WeChat, una a testa. Servono passaporto, numero di volo e indirizzo del primo hotel. Non è obbligatoria, ma evita la coda." },
+
+  { id: "prep-first-hour", group: "arrivo", due: "2026-11-17", label: "In aeroporto: eSIM accesa, WhatsApp e Google che funzionano", hint: "Prima di uscire, finché c’è il Wi-Fi e qualcuno a cui chiedere. All’immigrazione prima i chioschi delle impronte (tutte e dieci le dita), poi la fila per stranieri." },
+  { id: "prep-alipay-check", group: "arrivo", due: "2026-11-17", label: "Aprire Alipay: la carta è ancora collegata?", hint: "Al primo uso in Cina a volte chiede di riverificare. Già che ci siete, attivare il QR «Transport» per la metro di Pechino." },
+  { id: "prep-passport-photo", group: "arrivo", due: "2026-11-17", label: "Foto della pagina del passaporto e del timbro d’ingresso nel telefono", hint: "Il passaporto originale va sempre con sé (treni, musei, hotel e parchi lo controllano, una foto non basta); la foto serve per i moduli o in caso di smarrimento." },
+  { id: "prep-local-sim", group: "arrivo", due: "2026-11-17", label: "SIM cinese, solo se serve un numero +86", hint: "Di solito basta il numero italiano. Se serve: negozio China Mobile o Unicom con il passaporto, il piano più economico (i dati arrivano dall’eSIM). Chiedere 到期自动注销 (si chiude da sola alla scadenza) e controllare il piano sulla ricevuta: a chi c’è stato hanno venduto due volte una SIM da 1 GB al prezzo di una «big data»." },
+];
+
+/** «Da sapere» della stessa lista: niente da spuntare, solo da leggere. */
+export const PREP_FACTS = [
+  "Niente mance, da nessuna parte: lasciare soldi mette in imbarazzo.",
+  "Pranzo 11:30–13, cena dalle 17:30; fuori dalle grandi città le cucine chiudono presto.",
+  "Al ristorante si ordina e si paga dal QR sul tavolo. Non piccante: 不要辣 (bú yào là).",
+  "Acqua del rubinetto non potabile: bottiglie ovunque, in hotel di solito due al giorno.",
+  "Passaporto originale sempre con sé: lo chiedono treni, musei, hotel e alcuni parchi.",
+  "Grandi attrazioni nel weekend: folla di un altro livello, meglio all’apertura.",
+  "Niente Airbnb in Cina (uscito nel 2022): in una casa privata la registrazione in polizia entro 24 ore tocca a voi; negli hotel la fanno loro al check-in.",
+  "Due linee dati: l’eSIM esce all’estero (banche, AI, app di casa), una SIM cinese apre i servizi che vogliono un numero o un indirizzo cinese.",
 ];
 
 /**

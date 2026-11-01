@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ARRIVAL_KEY, DEFAULT_TRANSFER_ITEMS, PLAN_VERSION, TRIP_NIGHTS, initialLegs, initialSchedule, initialStops } from "../lib/planner/catalog.ts";
+import { ARRIVAL_KEY, DEFAULT_TRANSFER_ITEMS, PLAN_VERSION, PREP_CHECKLIST, TRIP_NIGHTS, initialLegs, initialSchedule, initialStops } from "../lib/planner/catalog.ts";
 import {
   bestInsertionAfter,
   buildCalendar,
@@ -11,6 +11,7 @@ import {
   findFreeSlot,
   insertStop,
   isOverflowItem,
+  legDate,
   loadPlan,
   mergePlan,
   migratePlan,
@@ -24,6 +25,7 @@ import {
   settleUpEntry,
   shapePlan,
   totalNights,
+  trainSaleWindows,
 } from "../lib/planner/model.ts";
 import type { PlanData, ScheduleItem } from "../lib/planner/types.ts";
 import { addDaysKey, sameValue, stableStringify } from "../lib/planner/utils.ts";
@@ -406,4 +408,32 @@ test("v6: il tour della Città Proibita diventa prenotato, senza prendere la sti
   assert.equal(tour.stopId, "beijing");
   assert.match(notes.join(" "), /Città Proibita/);
   assert.equal(balanceOf(plan).unassigned, 0);
+});
+
+test("v7: i to-do della lista «Prepare» entrano in checklist una volta sola, senza perdere spunte", () => {
+  const own = { id: "check-mio", label: "Comprare adattatore", done: true };
+  const { plan, notes } = migratePlan(shapePlan(legacyPlan({ itineraryVersion: 6, extraChecklist: [own] }))!);
+  assert.deepEqual(plan.extraChecklist[0], own);
+  assert.deepEqual(plan.extraChecklist.slice(1).map((item) => item.id), PREP_CHECKLIST.map((item) => item.id));
+  assert.ok(plan.extraChecklist.slice(1).every((item) => item.group && !item.done));
+  assert.match(notes.join(" "), /Checklist ampliata con \d+ punti/);
+  assert.equal(plan.checklist.length, 8);
+
+  // Spuntati due punti, poi una vecchia app riscrive la versione 6: niente doppioni, spunte intatte.
+  const ticked = clone(plan);
+  ticked.extraChecklist = ticked.extraChecklist.map((item) => (item.id === "prep-esim-buy" ? { ...item, done: true } : item.id === "prep-local-sim" ? { ...item, done: true, skipped: true } : item));
+  const again = migratePlan(shapePlan({ ...clone(ticked), itineraryVersion: 6 })!);
+  assert.equal(stableStringify(again.plan.extraChecklist), stableStringify(ticked.extraChecklist));
+  assert.deepEqual(again.notes, []);
+  assert.equal(seedPlan().extraChecklist.length, PREP_CHECKLIST.length);
+});
+
+test("treni: le vendite aprono 15 giorni prima, voli e treni prenotati esclusi", () => {
+  const plan = seedPlan();
+  const timeline = buildTimeline(plan.stops);
+  const legs = normalizeLegs(plan.stops, plan.legs).map((leg) => (leg.id === "xian-chengdu" ? { ...leg, bookingStatus: "prenotato" as const } : leg));
+  const windows = trainSaleWindows(legs, (leg) => legDate(timeline, leg));
+  assert.deepEqual(windows[0], { leg: legs.find((leg) => leg.id === "beijing-xian"), date: "2026-11-20", opensOn: "2026-11-05" });
+  assert.ok(!windows.some(({ leg }) => leg.id === "xian-chengdu" || leg.mode.includes("✈️")));
+  assert.deepEqual(windows.map(({ date }) => date), [...windows.map(({ date }) => date)].sort());
 });
