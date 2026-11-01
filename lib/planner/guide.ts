@@ -269,7 +269,7 @@ export const GUIDE_APP_GROUPS: Array<{ id: string; title: string; apps: GuideApp
           "Iscriversi con il percorso per stranieri: scansione del passaporto, modulo compilato da solo",
           "Entrare dall’app anche se l’e-mail non arriva; non provare dal sito",
           "Ancora niente? Il primo giorno in Cina, alla biglietteria di una stazione",
-          "Comprare qui, senza commissioni: le vendite aprono 15 giorni prima",
+          "Comprare qui, senza commissioni: le vendite aprono 15 giorni prima contando quello del treno (per il 20 si compra dal 6)",
         ],
         links: [{ label: "12306", url: "https://www.12306.cn/" }],
         checkId: "prep-12306",

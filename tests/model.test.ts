@@ -438,12 +438,12 @@ test("v7–v8: i to-do di chi è già stato in Cina entrano in checklist una vol
   assert.equal(upgraded.plan.extraChecklist.find((item) => item.id === "prep-esim-buy")!.done, true);
 });
 
-test("treni: le vendite aprono 15 giorni prima, voli e treni prenotati esclusi", () => {
+test("treni: le vendite aprono 15 giorni prima contando la partenza, voli e treni prenotati esclusi", () => {
   const plan = seedPlan();
   const timeline = buildTimeline(plan.stops);
   const legs = normalizeLegs(plan.stops, plan.legs).map((leg) => (leg.id === "xian-chengdu" ? { ...leg, bookingStatus: "prenotato" as const } : leg));
   const windows = trainSaleWindows(legs, (leg) => legDate(timeline, leg));
-  assert.deepEqual(windows[0], { leg: legs.find((leg) => leg.id === "beijing-xian"), date: "2026-11-20", opensOn: "2026-11-05" });
+  assert.deepEqual(windows[0], { leg: legs.find((leg) => leg.id === "beijing-xian"), date: "2026-11-20", opensOn: "2026-11-06" });
   assert.ok(!windows.some(({ leg }) => leg.id === "xian-chengdu" || leg.mode.includes("✈️")));
   assert.deepEqual(windows.map(({ date }) => date), [...windows.map(({ date }) => date)].sort());
 });

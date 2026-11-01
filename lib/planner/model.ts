@@ -113,7 +113,7 @@ export function trainSaleWindows(legs: Leg[], legDateOf: (leg: Leg) => string) {
     .filter((leg) => /🚄|treno/i.test(leg.mode) && leg.bookingStatus !== "prenotato")
     .map((leg) => ({ leg, date: legDateOf(leg) }))
     .filter(({ date }) => isDateKey(date))
-    .map(({ leg, date }) => ({ leg, date, opensOn: addDaysKey(date, -TRAIN_SALE_DAYS) }))
+    .map(({ leg, date }) => ({ leg, date, opensOn: addDaysKey(date, 1 - TRAIN_SALE_DAYS) }))
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 

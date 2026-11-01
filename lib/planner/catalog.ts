@@ -673,7 +673,7 @@ export const CHECKLIST_GROUPS: Array<{ id: ChecklistGroup; title: string; subtit
   { id: "altro", title: "Altro", subtitle: "Punti aggiunti da voi" },
 ];
 
-/** 12306 apre le vendite dei treni 15 giorni prima della partenza. */
+/** 12306 vende i treni dei prossimi 15 giorni, oggi compreso: un treno del 20 si compra dal 6. */
 export const TRAIN_SALE_DAYS = 15;
 
 /** Spunte salvate per posizione in `checklist`: non riordinare, solo aggiungere in fondo. */
@@ -721,7 +721,7 @@ export const PREP_CHECKLIST: PrepItem[] = [
   { id: "prep-phone-backup", group: "a-casa", due: "2026-11-14", label: "Backup dei telefoni prima di partire (chat di WeChat comprese)", hint: "Se un telefono si perde o si rompe, si riparte da lì." },
 
   { id: "prep-12306", group: "ultima-settimana", due: "2026-11-04", label: "Registrarsi a Railway 12306 dall’app, non dal sito", hint: "All’iscrizione l’app mostra un banner per stranieri: scansiona il passaporto e compila il modulo. L’e-mail di conferma può non arrivare mai: entrare comunque dall’app. Dal sito si resta chiusi fuori. 12306 non ha commissioni, Trip.com ~€6–7 a biglietto." , guide: "app-12306" },
-  { id: "prep-trains", group: "ultima-settimana", label: "Prenotare i treni veloci appena aprono le vendite", hint: "Il passaporto è il biglietto: si scansiona al tornello. Arrivare 45–60 minuti prima (controllo documenti e bagagli) e controllare la stazione: Beijing West ≠ Beijing South. I posti restituiti ricompaiono prima su 12306; per cambi e rimborsi con passaporto straniero Trip.com è la via più semplice." },
+  { id: "prep-trains", group: "ultima-settimana", label: "Prenotare i treni veloci appena aprono le vendite", hint: "Il passaporto è il biglietto: si scansiona al tornello. Arrivare 45–60 minuti prima (controllo documenti e bagagli) e controllare la stazione: Beijing West ≠ Beijing South. I posti restituiti ricompaiono prima su 12306; per cambi e rimborsi con passaporto straniero Trip.com è la via più semplice. Su Trip.com si può anche ordinare prima dell’apertura: comprano loro i biglietti appena escono." },
   { id: "prep-tickets", group: "ultima-settimana", due: "2026-11-10", label: "Prenotare le altre visite a numero chiuso (Terracotta, panda, musei)", hint: "Serve il numero di passaporto di ognuno e i posti famosi finiscono pochi minuti dopo l’uscita: segnarsi giorno e ora e farsi trovare pronti. Su Trip.com a volte la voce è un tour o un combo: leggere cosa include. Panda: la base di Wolong è a ~2 h di bus da Chengdu, bellissima e quasi vuota (ottobre 2026)." },
   { id: "prep-airport", group: "ultima-settimana", due: "2026-11-14", label: "Studiare il tragitto aeroporto → primo hotel di Pechino", hint: "Terminal d’arrivo e orari di metro/Airport Express (molti chiudono verso le 22–23), poi DiDi da Alipay o la fila dei taxi ufficiali. Rifiutare chi vi avvicina in sala arrivi. L’indirizzo in cinese è in «🚕 Mostra in cinese» nella scheda hotel." },
   { id: "prep-arrival-card", group: "ultima-settimana", due: "2026-11-16", label: "Compilare online la arrival card (dal 14 nov)", hint: "Nei 3 giorni prima dell’arrivo: sito s.nia.gov.cn, app NIA 12367 o mini-programma Alipay/WeChat, una a testa. Servono passaporto, numero di volo e indirizzo del primo hotel. Non è obbligatoria, ma evita la coda.", links: [{ label: "Arrival card online (NIA)", url: "https://s.nia.gov.cn/" }] },
