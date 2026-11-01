@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { PAYER_LABELS, STOP_ZH, SUGGESTED_STOPS } from "@/lib/planner/catalog";
+import { CITY_TIPS } from "@/lib/planner/guide";
 import { bestInsertionAfter, distanceKm, isLockedStop, scheduleActivity, scheduleKind, stopFromSuggestion, updateLeg } from "@/lib/planner/model";
 import type { Activity, PlanData, Stop, SuggestedStop } from "@/lib/planner/types";
 import { euro, formatCost, formatLongDate, formatShortDate, googleMapsSearchUrl, googleMapsStopUrl, plural, slugify, uid, webSearchUrl } from "@/lib/planner/utils";
@@ -473,6 +474,12 @@ function CityPanel() {
         <button type="submit">+ Aggiungi</button>
       </form>
       <a className="clou-search" href={webSearchUrl(`cosa vedere a ${stop.name} Cina attrazioni imperdibili`)} target="_blank" rel="noreferrer">🔍 Cerca idee sul web per {stop.name} ↗</a>
+
+      {CITY_TIPS[stop.id] && <>
+        <h3>Consigli di chi c’è stato</h3>
+        <ul className="city-tips">{CITY_TIPS[stop.id].map((tip) => <li key={tip}>{tip}</li>)}</ul>
+        <button type="button" className="city-tips-more" onClick={() => goTo("guide", { anchor: "guide-cities" })}>Tutta la guida →</button>
+      </>}
     </div>
   </aside>;
 }

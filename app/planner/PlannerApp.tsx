@@ -10,6 +10,7 @@ import { toEuro } from "@/lib/planner/utils";
 import { PlannerContext, type Planner, type Section } from "./context";
 import { AgendaSection } from "./sections/Agenda";
 import { BudgetSection } from "./sections/Budget";
+import { GuideSection } from "./sections/Guide";
 import { HotelsSection } from "./sections/Hotels";
 import { ItinerarySection } from "./sections/Itinerary";
 import { HistorySection, NotesSection } from "./sections/Notes";
@@ -24,6 +25,7 @@ const NAV_ITEMS: Array<[Section, string]> = [
   ["transport", "Trasporti"],
   ["budget", "Budget"],
   ["planner", "Checklist & note"],
+  ["guide", "Guida"],
   ["history", "Modifiche"],
 ];
 
@@ -94,7 +96,9 @@ export function PlannerApp({ user, demo }: { user: User | null; demo: boolean })
     const anchor = options.anchor || (next === "hotels" && options.stopId ? `hotels-${options.stopId}` : "");
     window.setTimeout(() => {
       const target = anchor ? document.getElementById(anchor) : null;
-      if (target) target.scrollIntoView({ behavior: "smooth", block: "center" });
+      // Le schede della guida sono <details>: si aprono e si leggono dall'inizio.
+      if (target instanceof HTMLDetailsElement) target.open = true;
+      if (target) target.scrollIntoView({ behavior: "smooth", block: target instanceof HTMLDetailsElement || target.classList.contains("card") ? "start" : "center" });
       else document.querySelector(".nav")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 120);
   }, []);
@@ -159,6 +163,7 @@ export function PlannerApp({ user, demo }: { user: User | null; demo: boolean })
           {section === "transport" && <TransportSection />}
           {section === "budget" && <BudgetSection />}
           {section === "planner" && <NotesSection />}
+          {section === "guide" && <GuideSection />}
           {section === "history" && <HistorySection entries={changeLog} />}
         </>}
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ARRIVAL_KEY, DEFAULT_TRANSFER_ITEMS, PLAN_VERSION, PREP_CHECKLIST, TRIP_NIGHTS, initialLegs, initialSchedule, initialStops } from "../lib/planner/catalog.ts";
+import { ARRIVAL_KEY, DEFAULT_TRANSFER_ITEMS, PLAN_VERSION, PREP_CHECKLIST, SUGGESTED_STOPS, TRIP_NIGHTS, defaultChecklist, initialLegs, initialSchedule, initialStops } from "../lib/planner/catalog.ts";
+import { CITY_TIPS, GUIDE_APP_GROUPS, GUIDE_INTERNET } from "../lib/planner/guide.ts";
 import {
   bestInsertionAfter,
   buildCalendar,
@@ -445,4 +446,16 @@ test("treni: le vendite aprono 15 giorni prima, voli e treni prenotati esclusi",
   assert.deepEqual(windows[0], { leg: legs.find((leg) => leg.id === "beijing-xian"), date: "2026-11-20", opensOn: "2026-11-05" });
   assert.ok(!windows.some(({ leg }) => leg.id === "xian-chengdu" || leg.mode.includes("✈️")));
   assert.deepEqual(windows.map(({ date }) => date), [...windows.map(({ date }) => date)].sort());
+});
+
+test("guida: schede, checklist e tappe si rimandano a id che esistono", () => {
+  const apps = GUIDE_APP_GROUPS.flatMap((group) => group.apps);
+  const anchors = new Set([...apps.map((app) => app.id), ...GUIDE_INTERNET.map((topic) => topic.id), "guide-apps", "guide-internet", "guide-cities", "guide-facts"]);
+  assert.equal(anchors.size, apps.length + GUIDE_INTERNET.length + 4, "id della guida unici");
+  const checkIds = new Set(PREP_CHECKLIST.map((item) => item.id));
+  for (const app of apps) if (app.checkId) assert.ok(checkIds.has(app.checkId), `${app.id} → ${app.checkId}`);
+  for (const item of [...PREP_CHECKLIST, ...defaultChecklist]) if (item.guide) assert.ok(anchors.has(item.guide), `${item.label} → ${item.guide}`);
+  const stopIds = new Set([...initialStops, ...SUGGESTED_STOPS].map((stop) => stop.id));
+  for (const stopId of Object.keys(CITY_TIPS)) assert.ok(stopIds.has(stopId), stopId);
+  assert.ok(PREP_CHECKLIST.every((item) => !item.links?.some((link) => link.url.includes("adormo"))), "niente rimandi al sito con login");
 });

@@ -175,6 +175,8 @@ export type PrepItem = {
   due?: string;
   hint?: string;
   links?: Array<{ label: string; url: string }>;
+  /** Scheda della sezione «Guida» con i passi completi (id dell'elemento). */
+  guide?: string;
 };
 
 export type TripLink = {
@@ -205,6 +207,9 @@ export type PlanData = {
 
 export type TaxiInfo = {
   kind: "hotel" | "place";
+  /** Frase in cinese sopra il nome, al posto di quella per tassista o passante (con la traduzione). */
+  kicker?: string;
+  kickerIt?: string;
   title: string;
   titleZh?: string;
   subtitle: string;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { CHECKLIST_GROUPS, PREP_APPS_URL, PREP_CHECKLIST, PREP_FACTS, PREP_SOURCE_URL, defaultChecklist } from "@/lib/planner/catalog";
+import { CHECKLIST_GROUPS, PREP_CHECKLIST, defaultChecklist } from "@/lib/planner/catalog";
 import { trainSaleWindows } from "@/lib/planner/model";
 import type { ChecklistGroup, ChecklistItem, PrepItem, TripLink } from "@/lib/planner/types";
 import { addDaysKey, formatShortDate, normalizeLinkUrl, safeExternalLink, uid } from "@/lib/planner/utils";
@@ -20,6 +20,7 @@ type CheckRow = {
   due?: string;
   hint?: string;
   links?: PrepItem["links"];
+  guide?: string;
   toggle: () => void;
   /** Solo per i punti in `extraChecklist`: quelli di catalogo si segnano «non serve», gli altri si tolgono. */
   item?: ChecklistItem;
@@ -31,7 +32,7 @@ function groupOf(item: ChecklistItem): ChecklistGroup {
 }
 
 export function NotesSection() {
-  const { plan, view, update, log } = usePlanner();
+  const { plan, view, update, log, goTo } = usePlanner();
   const [newItem, setNewItem] = useState("");
   const [newGroup, setNewGroup] = useState<ChecklistGroup>("altro");
   const [openHints, setOpenHints] = useState<Set<string>>(() => new Set());
@@ -60,6 +61,7 @@ export function NotesSection() {
       due: entry.due,
       hint: entry.hint,
       links: entry.links,
+      guide: entry.guide,
       toggle: () => toggleDefault(index, entry.label),
     })),
     ...plan.extraChecklist.map((item) => ({
@@ -72,6 +74,7 @@ export function NotesSection() {
       due: item.id === "prep-trains" ? trains[0]?.opensOn : prepById.get(item.id)?.due,
       hint: prepById.get(item.id)?.hint,
       links: prepById.get(item.id)?.links,
+      guide: prepById.get(item.id)?.guide,
       toggle: () => {
         patchItem(item.id, (entry) => (entry.skipped ? { ...entry, done: false, skipped: false } : { ...entry, done: !entry.done }));
         log(item.done ? "Checklist riaperta" : "Checklist completata", item.label);
@@ -139,7 +142,7 @@ export function NotesSection() {
     <div className="stack">
       <article className="card">
         <div className="card-head"><div><p className="eyebrow">Preparazione</p><h2>Checklist</h2></div><span>{done} / {rows.length}</span></div>
-        <p className="checklist-source">In ordine di scadenza, con i consigli della <a href={PREP_SOURCE_URL} target="_blank" rel="noreferrer">lista «Prepare» ↗</a> e della <a href={PREP_APPS_URL} target="_blank" rel="noreferrer">guida alle app ↗</a> di chi in Cina c’è già stato. Tocca «Come» per i dettagli.</p>
+        <p className="checklist-source">In ordine di scadenza, con i consigli di chi in Cina c’è già stato. Tocca «Come» per i dettagli; app, internet e consigli città per città sono nella <button type="button" onClick={() => goTo("guide")}>Guida</button>.</p>
         <div className="checklist">
           {CHECKLIST_GROUPS.map((group) => {
             // sort è stabile: a parità di scadenza resta l'ordine del catalogo.
@@ -151,11 +154,11 @@ export function NotesSection() {
                 const open = openHints.has(row.key);
                 const hasTrains = row.key === "prep-trains";
                 const due = row.due && !row.done ? dueLabel(row.due) : null;
-                return <div className={`check-row${row.skipped ? " skipped" : ""}`} key={row.key}>
+                return <div className={`check-row${row.skipped ? " skipped" : ""}`} id={`check-${row.key}`} key={row.key}>
                   <label><input type="checkbox" checked={row.done} onChange={row.toggle} /><span>{row.label}{row.skipped && <em> · non serve</em>}</span></label>
                   <div className="check-meta">
                     {due && <small className={`check-due ${due.className}`}>{due.text}</small>}
-                    {(row.hint || row.links || hasTrains) && <button type="button" className="check-hint-toggle" aria-expanded={open} onClick={() => toggleHint(row.key)}>{open ? "Chiudi" : "Come"}</button>}
+                    {(row.hint || row.links || row.guide || hasTrains) && <button type="button" className="check-hint-toggle" aria-expanded={open} onClick={() => toggleHint(row.key)}>{open ? "Chiudi" : "Come"}</button>}
                     {row.item && (prepById.has(row.item.id)
                       ? <button type="button" className="check-skip" onClick={() => {
                         patchItem(row.item!.id, (entry) => ({ ...entry, done: !entry.skipped, skipped: !entry.skipped }));
@@ -168,7 +171,10 @@ export function NotesSection() {
                   </div>
                   {open && <div className="check-hint">
                     {row.hint && <p>{row.hint}</p>}
-                    {row.links && <p className="check-links">{row.links.map((link) => <a key={link.url} href={link.url} target="_blank" rel="noreferrer">{link.label} ↗</a>)}</p>}
+                    {(row.links || row.guide) && <p className="check-links">
+                      {row.links?.map((link) => <a key={link.url} href={link.url} target="_blank" rel="noreferrer">{link.label} ↗</a>)}
+                      {row.guide && <button type="button" onClick={() => goTo("guide", { anchor: row.guide })}>{row.guide.startsWith("app-") ? "Scheda nella guida →" : "Nella guida →"}</button>}
+                    </p>}
                     {hasTrains && (trains.length
                       ? <ul>{trains.map(({ leg, date, opensOn }) => <li key={leg.id}><b>{view.legLabel(leg)}</b> del {formatShortDate(date)}: {opensOn <= today ? "già in vendita" : `in vendita dal ${formatShortDate(opensOn)}`}</li>)}</ul>
                       : <p>Tutti i treni dell’itinerario risultano prenotati.</p>)}
@@ -185,11 +191,6 @@ export function NotesSection() {
           <input required aria-label="Nuovo punto della checklist" placeholder="Es. Comprare adattatore per le prese" value={newItem} onChange={(event) => setNewItem(event.target.value)} />
           <button className="primary" type="submit">+ Aggiungi</button>
         </form>
-      </article>
-
-      <article className="card facts-card">
-        <div className="card-head"><div><p className="eyebrow">Da sapere</p><h2>Piccole cose sul posto</h2></div></div>
-        <ul className="prep-facts">{PREP_FACTS.map((fact) => <li key={fact}>{fact}</li>)}</ul>
       </article>
 
       <article className="card links-card">

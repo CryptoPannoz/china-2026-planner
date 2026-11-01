@@ -4,7 +4,7 @@ import { createContext, useContext } from "react";
 import type { PlanView } from "@/lib/planner/model";
 import type { Currency, PlanData, ScheduleKind, TaxiInfo } from "@/lib/planner/types";
 
-export type Section = "itinerary" | "calendar" | "hotels" | "transport" | "budget" | "planner" | "history";
+export type Section = "itinerary" | "calendar" | "hotels" | "transport" | "budget" | "planner" | "guide" | "history";
 
 export type Planner = {
   plan: PlanData;

@@ -17,8 +17,8 @@ export function TaxiCard({ info, onClose }: { info: TaxiInfo; onClose: () => voi
   const subtitleZh = info.subtitleZh?.trim();
   return <div className="taxi-overlay" role="dialog" aria-modal="true" aria-label="Nome in cinese da mostrare" onClick={onClose}>
     <div className="taxi-card" onClick={(event) => event.stopPropagation()}>
-      <p className="taxi-kicker">{info.kind === "hotel" ? "请送我们到这家酒店，谢谢！" : "请问，这个地方怎么走？谢谢！"}</p>
-      <small className="taxi-kicker-it">{info.kind === "hotel" ? "«Per favore, ci porti a questo hotel. Grazie!»" : "«Scusi, come si arriva a questo posto? Grazie!»"}</small>
+      <p className="taxi-kicker">{info.kicker || (info.kind === "hotel" ? "请送我们到这家酒店，谢谢！" : "请问，这个地方怎么走？谢谢！")}</p>
+      <small className="taxi-kicker-it">{info.kickerIt || (info.kind === "hotel" ? "«Per favore, ci porti a questo hotel. Grazie!»" : "«Scusi, come si arriva a questo posto? Grazie!»")}</small>
       <h2>{titleZh || info.title}</h2>
       <p className="taxi-address">{subtitleZh || info.subtitle || ""}</p>
       {!titleZh && <small className="taxi-hint">Consiglio: aggiungi il nome in cinese (c&apos;è il link «Traduci»), così chi legge non ha dubbi.</small>}
