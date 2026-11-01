@@ -410,13 +410,14 @@ test("v6: il tour della Città Proibita diventa prenotato, senza prendere la sti
   assert.equal(balanceOf(plan).unassigned, 0);
 });
 
-test("v7: i to-do della lista «Prepare» entrano in checklist una volta sola, senza perdere spunte", () => {
+test("v7–v8: i to-do di chi è già stato in Cina entrano in checklist una volta sola, senza perdere spunte", () => {
   const own = { id: "check-mio", label: "Comprare adattatore", done: true };
   const { plan, notes } = migratePlan(shapePlan(legacyPlan({ itineraryVersion: 6, extraChecklist: [own] }))!);
   assert.deepEqual(plan.extraChecklist[0], own);
   assert.deepEqual(plan.extraChecklist.slice(1).map((item) => item.id), PREP_CHECKLIST.map((item) => item.id));
   assert.ok(plan.extraChecklist.slice(1).every((item) => item.group && !item.done));
   assert.match(notes.join(" "), /Checklist ampliata con \d+ punti/);
+  assert.equal(new Set(PREP_CHECKLIST.map((item) => item.id)).size, PREP_CHECKLIST.length);
   assert.equal(plan.checklist.length, 8);
 
   // Spuntati due punti, poi una vecchia app riscrive la versione 6: niente doppioni, spunte intatte.
@@ -426,6 +427,14 @@ test("v7: i to-do della lista «Prepare» entrano in checklist una volta sola, s
   assert.equal(stableStringify(again.plan.extraChecklist), stableStringify(ticked.extraChecklist));
   assert.deepEqual(again.notes, []);
   assert.equal(seedPlan().extraChecklist.length, PREP_CHECKLIST.length);
+
+  // Documento già a v7: arrivano solo i punti della guida alle app (v8), in fondo.
+  const v8Ids = ["prep-bank", "prep-work-tunnel", "prep-phone-backup"];
+  const atV7 = { ...clone(ticked), itineraryVersion: 7, extraChecklist: ticked.extraChecklist.filter((item) => !v8Ids.includes(item.id)) };
+  const upgraded = migratePlan(shapePlan(atV7)!);
+  assert.deepEqual(upgraded.plan.extraChecklist.slice(-3).map((item) => item.id), v8Ids);
+  assert.match(upgraded.notes.join(" "), /Checklist ampliata con 3 punti/);
+  assert.equal(upgraded.plan.extraChecklist.find((item) => item.id === "prep-esim-buy")!.done, true);
 });
 
 test("treni: le vendite aprono 15 giorni prima, voli e treni prenotati esclusi", () => {

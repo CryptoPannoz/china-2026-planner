@@ -174,6 +174,7 @@ export type PrepItem = {
   group: ChecklistGroup;
   due?: string;
   hint?: string;
+  links?: Array<{ label: string; url: string }>;
 };
 
 export type TripLink = {

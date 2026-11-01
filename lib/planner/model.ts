@@ -500,14 +500,15 @@ export function migratePlan(input: PlanData): { plan: PlanData; notes: string[] 
     notes.push("Tour della Città Proibita segnato come prenotato: aggiungete prezzo e chi ha pagato in agenda.");
   }
 
-  if (version < 7) {
-    // v7: i to-do della lista «Prepare» (eSIM, Alipay, treni, arrivo…) entrano in checklist. Solo quelli
-    // che mancano: se una vecchia app riscrive la versione, spunte e «non serve» restano come sono.
+  if (version < 8) {
+    // v7: i to-do della lista «Prepare» (eSIM, Alipay, treni, arrivo…) entrano in checklist; v8: quelli della
+    // guida alle app (banca, mappe offline, tunnel…). Solo quelli che mancano: se una vecchia app riscrive la
+    // versione, spunte e «non serve» restano come sono.
     const present = new Set(plan.extraChecklist.map((item) => item.id));
     const missing = PREP_CHECKLIST.filter((item) => !present.has(item.id));
     if (missing.length) {
       plan.extraChecklist = [...plan.extraChecklist, ...missing.map(({ id, label, group }) => ({ id, label, group, done: false }))];
-      notes.push(`Checklist ampliata con ${plural(missing.length, "punto", "punti")} dalla lista «Prepare» di chi in Cina c’è già stato: eSIM, Alipay, mappe, treni e arrivo.`);
+      notes.push(`Checklist ampliata con ${plural(missing.length, "punto", "punti")} dai consigli di chi in Cina c’è già stato (sezione «Checklist & note»).`);
     }
   }
 

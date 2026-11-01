@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { CHECKLIST_GROUPS, PREP_CHECKLIST, PREP_FACTS, PREP_SOURCE_URL, defaultChecklist } from "@/lib/planner/catalog";
+import { CHECKLIST_GROUPS, PREP_APPS_URL, PREP_CHECKLIST, PREP_FACTS, PREP_SOURCE_URL, defaultChecklist } from "@/lib/planner/catalog";
 import { trainSaleWindows } from "@/lib/planner/model";
-import type { ChecklistGroup, ChecklistItem, TripLink } from "@/lib/planner/types";
+import type { ChecklistGroup, ChecklistItem, PrepItem, TripLink } from "@/lib/planner/types";
 import { addDaysKey, formatShortDate, normalizeLinkUrl, safeExternalLink, uid } from "@/lib/planner/utils";
 import { usePlanner } from "../context";
 import { TextArea, TextInput } from "../fields";
@@ -19,6 +19,7 @@ type CheckRow = {
   group: ChecklistGroup;
   due?: string;
   hint?: string;
+  links?: PrepItem["links"];
   toggle: () => void;
   /** Solo per i punti in `extraChecklist`: quelli di catalogo si segnano «non serve», gli altri si tolgono. */
   item?: ChecklistItem;
@@ -58,6 +59,7 @@ export function NotesSection() {
       group: entry.group,
       due: entry.due,
       hint: entry.hint,
+      links: entry.links,
       toggle: () => toggleDefault(index, entry.label),
     })),
     ...plan.extraChecklist.map((item) => ({
@@ -69,6 +71,7 @@ export function NotesSection() {
       // I treni scadono quando apre la vendita del primo ancora da prenotare.
       due: item.id === "prep-trains" ? trains[0]?.opensOn : prepById.get(item.id)?.due,
       hint: prepById.get(item.id)?.hint,
+      links: prepById.get(item.id)?.links,
       toggle: () => {
         patchItem(item.id, (entry) => (entry.skipped ? { ...entry, done: false, skipped: false } : { ...entry, done: !entry.done }));
         log(item.done ? "Checklist riaperta" : "Checklist completata", item.label);
@@ -136,7 +139,7 @@ export function NotesSection() {
     <div className="stack">
       <article className="card">
         <div className="card-head"><div><p className="eyebrow">Preparazione</p><h2>Checklist</h2></div><span>{done} / {rows.length}</span></div>
-        <p className="checklist-source">In ordine di scadenza, con i consigli della <a href={PREP_SOURCE_URL} target="_blank" rel="noreferrer">lista «Prepare» ↗</a> di chi in Cina c’è già stato. Tocca «Come» per i dettagli.</p>
+        <p className="checklist-source">In ordine di scadenza, con i consigli della <a href={PREP_SOURCE_URL} target="_blank" rel="noreferrer">lista «Prepare» ↗</a> e della <a href={PREP_APPS_URL} target="_blank" rel="noreferrer">guida alle app ↗</a> di chi in Cina c’è già stato. Tocca «Come» per i dettagli.</p>
         <div className="checklist">
           {CHECKLIST_GROUPS.map((group) => {
             // sort è stabile: a parità di scadenza resta l'ordine del catalogo.
@@ -152,7 +155,7 @@ export function NotesSection() {
                   <label><input type="checkbox" checked={row.done} onChange={row.toggle} /><span>{row.label}{row.skipped && <em> · non serve</em>}</span></label>
                   <div className="check-meta">
                     {due && <small className={`check-due ${due.className}`}>{due.text}</small>}
-                    {(row.hint || hasTrains) && <button type="button" className="check-hint-toggle" aria-expanded={open} onClick={() => toggleHint(row.key)}>{open ? "Chiudi" : "Come"}</button>}
+                    {(row.hint || row.links || hasTrains) && <button type="button" className="check-hint-toggle" aria-expanded={open} onClick={() => toggleHint(row.key)}>{open ? "Chiudi" : "Come"}</button>}
                     {row.item && (prepById.has(row.item.id)
                       ? <button type="button" className="check-skip" onClick={() => {
                         patchItem(row.item!.id, (entry) => ({ ...entry, done: !entry.skipped, skipped: !entry.skipped }));
@@ -165,6 +168,7 @@ export function NotesSection() {
                   </div>
                   {open && <div className="check-hint">
                     {row.hint && <p>{row.hint}</p>}
+                    {row.links && <p className="check-links">{row.links.map((link) => <a key={link.url} href={link.url} target="_blank" rel="noreferrer">{link.label} ↗</a>)}</p>}
                     {hasTrains && (trains.length
                       ? <ul>{trains.map(({ leg, date, opensOn }) => <li key={leg.id}><b>{view.legLabel(leg)}</b> del {formatShortDate(date)}: {opensOn <= today ? "già in vendita" : `in vendita dal ${formatShortDate(opensOn)}`}</li>)}</ul>
                       : <p>Tutti i treni dell’itinerario risultano prenotati.</p>)}
