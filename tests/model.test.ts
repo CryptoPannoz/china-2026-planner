@@ -449,7 +449,7 @@ test("v9: fine della pianificazione, via idee, città scartate e tratte vecchie;
 test("da prenotare: notti senza hotel prenotato, tratte aperte e biglietti in agenda, in ordine di data", () => {
   const plan = seedPlan();
   plan.hotelStays = plan.hotelStays.map((stay) => (stay.stopId === "beijing" ? { ...stay, bookingStatus: "prenotato", totalPrice: 300 } : stay));
-  plan.legs = plan.legs.map((leg) => (leg.id === "beijing-xian" ? { ...leg, bookingStatus: "prenotato" } : leg));
+  plan.legs = plan.legs.map((leg) => (leg.id === "beijing-xian" ? { ...leg, bookingStatus: "prenotato", bookingRef: "E123", paidBy: "sofia" } : leg));
   const view = buildView(plan);
   const byId = new Map(view.openBookings.map((entry) => [entry.id, entry]));
   assert.ok(!byId.has("hotel-beijing"));
@@ -460,4 +460,10 @@ test("da prenotare: notti senza hotel prenotato, tratte aperte e biglietti in ag
   assert.equal(view.openBookings.filter((entry) => entry.kind === "agenda").length, priced.length);
   assert.deepEqual(view.openBookings.map((entry) => entry.date), [...view.openBookings.map((entry) => entry.date)].sort());
   assert.equal(view.bookedNights, plan.stops[0].nights);
+  // Ciò che è prenotato passa nell'elenco «Prenotato», con numero e chi ha pagato.
+  const done = new Map(view.doneBookings.map((entry) => [entry.id, entry]));
+  const hotel = plan.hotelStays.find((stay) => stay.stopId === "beijing")!;
+  assert.ok(done.has(`hotel-${hotel.id}`));
+  assert.ok(done.has("leg-beijing-xian"));
+  assert.ok(view.doneBookings.every((entry) => !byId.has(entry.id)));
 });

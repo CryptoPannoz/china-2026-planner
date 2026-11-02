@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { CHECKLIST_GROUPS, PREP_CHECKLIST, defaultChecklist } from "@/lib/planner/catalog";
-import { trainSaleWindows, type OpenBooking } from "@/lib/planner/model";
+import { trainSaleWindows, type BookingEntry } from "@/lib/planner/model";
 import type { ChecklistGroup, ChecklistItem, PrepItem, TripLink } from "@/lib/planner/types";
 import { addDaysKey, formatShortDate, normalizeLinkUrl, safeExternalLink, uid } from "@/lib/planner/utils";
 import { usePlanner } from "../context";
@@ -10,7 +10,17 @@ import { TextArea, TextInput } from "../fields";
 import { BACKUP_KEY, type ChangeLogEntry } from "../usePlanSync";
 
 const prepById = new Map(PREP_CHECKLIST.map((item) => [item.id, item]));
-const BOOKING_ICONS: Record<OpenBooking["kind"], string> = { hotel: "⌂", transport: "🚄", agenda: "🎟" };
+const BOOKING_ICONS: Record<BookingEntry["kind"], string> = { hotel: "⌂", transport: "🚄", agenda: "🎟" };
+
+function BookingList({ entries }: { entries: BookingEntry[] }) {
+  const { goTo } = usePlanner();
+  return <ul className="issue-list">
+    {entries.map((entry) => <li key={entry.id}>
+      <span><b>{BOOKING_ICONS[entry.kind]} {entry.title}</b><small>{entry.detail}</small></span>
+      <button onClick={() => goTo(entry.section, { date: entry.date, stopId: entry.stopId, anchor: entry.anchor })}>Apri →</button>
+    </li>)}
+  </ul>;
+}
 
 type CheckRow = {
   key: string;
@@ -143,6 +153,7 @@ export function NotesSection() {
   return <section className="planner-grid simple">
     <div className="stack">
       <OpenBookingsCard />
+      <DoneBookingsCard />
       <article className="card">
         <div className="card-head"><div><p className="eyebrow">Preparazione</p><h2>Checklist</h2></div><span>{done} / {rows.length}</span></div>
         <p className="checklist-source">In ordine di scadenza, con i consigli di chi in Cina c’è già stato. Tocca «Come» per i dettagli; app, internet e consigli città per città sono nella <button type="button" onClick={() => goTo("guide")}>Guida</button>.</p>
@@ -267,16 +278,23 @@ export function HistorySection({ entries }: { entries: ChangeLogEntry[] }) {
 
 /** Cosa manca da prenotare: si ricava da hotel, tratte e agenda, quindi si svuota da solo. */
 function OpenBookingsCard() {
-  const { view, goTo } = usePlanner();
+  const { view } = usePlanner();
   const open = view.openBookings;
   return <article className="card open-bookings" id="open-bookings">
     <div className="card-head"><div><p className="eyebrow">Si aggiorna da solo da hotel, trasporti e agenda</p><h2>Da prenotare</h2></div><span className={`fit-badge ${open.length ? "" : "ok"}`}>{open.length || "✓"}</span></div>
-    {open.length === 0 ? <p className="empty">Tutto prenotato: hotel, tratte e biglietti in agenda.</p> : <ul className="issue-list">
-      {open.map((entry) => <li key={entry.id}>
-        <span><b>{BOOKING_ICONS[entry.kind]} {entry.title}</b><small>{entry.detail}</small></span>
-        <button onClick={() => goTo(entry.section, { date: entry.date, stopId: entry.stopId, anchor: entry.anchor })}>Apri →</button>
-      </li>)}
-    </ul>}
+    {open.length === 0 ? <p className="empty">Tutto prenotato: hotel, tratte e biglietti in agenda.</p> : <BookingList entries={open} />}
     <p className="checklist-source">Dall’agenda compaiono i blocchi con un prezzo e ancora «da prenotare»: se si paga sul posto, nel blocco scegliete «Nessuna prenotazione».</p>
+  </article>;
+}
+
+/** Le prenotazioni fatte in un colpo d'occhio: numeri, orari e chi ha pagato; i dettagli sono nella scheda. */
+function DoneBookingsCard() {
+  const { view } = usePlanner();
+  const done = view.doneBookings;
+  if (!done.length) return null;
+  return <article className="card open-bookings" id="done-bookings">
+    <div className="card-head"><div><p className="eyebrow">Hotel, tratte e biglietti già presi</p><h2>Prenotato</h2></div><span className="fit-badge ok">{done.length}</span></div>
+    <BookingList entries={done} />
+    <p className="checklist-source">Note, indirizzi in cinese e scadenze di cancellazione sono nella scheda di ognuno: «Apri →».</p>
   </article>;
 }

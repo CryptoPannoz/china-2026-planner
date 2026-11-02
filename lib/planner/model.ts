@@ -8,6 +8,7 @@ import {
   DEFAULT_TRANSFER_ITEMS,
   FLIGHTS_COST,
   KNOWN_LEG_PRESETS,
+  PAYER_LABELS,
   PLAN_VERSION,
   PREP_CHECKLIST,
   STOP_ZH,
@@ -862,10 +863,10 @@ export function planIssues(plan: PlanData, calendar: CalendarDay[], legs: Leg[])
 }
 
 // ---------------------------------------------------------------------------
-// Cosa resta da prenotare, in cima a «Checklist & note»
+// Prenotazioni fatte e da fare, in cima a «Checklist & note»
 // ---------------------------------------------------------------------------
 
-export type OpenBooking = {
+export type BookingEntry = {
   id: string;
   kind: "hotel" | "transport" | "agenda";
   title: string;
@@ -880,10 +881,10 @@ export type OpenBooking = {
  * Notti senza un hotel prenotato (per tappa), tratte non ancora prenotate e blocchi d'agenda con un
  * prezzo ancora «da prenotare», in ordine di data.
  */
-export function openBookings(plan: PlanData, timeline: TimelineEntry[], legs: Leg[], legDateOf: (leg: Leg) => string): OpenBooking[] {
+export function openBookings(plan: PlanData, timeline: TimelineEntry[], legs: Leg[], legDateOf: (leg: Leg) => string): BookingEntry[] {
   const names = new Map(plan.stops.map((stop) => [stop.id, stop.name]));
   const booked = plan.hotelStays.filter((stay) => stay.bookingStatus === "prenotato");
-  const hotels = timeline.flatMap(({ stop, arrival }): OpenBooking[] => {
+  const hotels = timeline.flatMap(({ stop, arrival }): BookingEntry[] => {
     const missing = Array.from({ length: stop.nights }, (_, night) => addDaysKey(arrival, night))
       .filter((date) => diffDaysKey(ARRIVAL_KEY, date) < TRIP_NIGHTS && !booked.some((stay) => stay.checkInDate <= date && stay.checkOutDate > date));
     if (!missing.length) return [];
@@ -898,7 +899,7 @@ export function openBookings(plan: PlanData, timeline: TimelineEntry[], legs: Le
     }];
   });
   const sales = new Map(trainSaleWindows(legs, legDateOf).map(({ leg, opensOn }) => [leg.id, opensOn]));
-  const transport = legs.filter((leg) => leg.included && leg.bookingStatus !== "prenotato").map((leg): OpenBooking => {
+  const transport = legs.filter((leg) => leg.included && leg.bookingStatus !== "prenotato").map((leg): BookingEntry => {
     const date = legDateOf(leg);
     const opensOn = sales.get(leg.id);
     return {
@@ -911,11 +912,51 @@ export function openBookings(plan: PlanData, timeline: TimelineEntry[], legs: Le
       anchor: `leg-${leg.id}`,
     };
   });
-  const agenda = plan.scheduleItems.filter((item) => item.bookingStatus === "da-prenotare" && item.price > 0).map((item): OpenBooking => ({
+  const agenda = plan.scheduleItems.filter((item) => item.bookingStatus === "da-prenotare" && item.price > 0).map((item): BookingEntry => ({
     id: `item-${item.id}`,
     kind: "agenda",
     title: item.name,
     detail: `${formatShortDate(item.date)} · ${item.startTime} · ${names.get(item.stopId) || ""}`,
+    date: item.date,
+    section: "calendar",
+    anchor: `plan-${item.id}`,
+  }));
+  return [...hotels, ...transport, ...agenda].sort((left, right) => left.date.localeCompare(right.date));
+}
+
+const paidByText = (payer: Payer | undefined) => (payer ? ` · ha pagato ${PAYER_LABELS[payer]}` : "");
+
+/** Tutto ciò che è già prenotato, con numeri e orari da avere sotto mano, in ordine di data. */
+export function doneBookings(plan: PlanData, legs: Leg[], legDateOf: (leg: Leg) => string): BookingEntry[] {
+  const names = new Map(plan.stops.map((stop) => [stop.id, stop.name]));
+  const hotels = plan.hotelStays.filter((stay) => stay.bookingStatus === "prenotato").map((stay): BookingEntry => ({
+    id: `hotel-${stay.id}`,
+    kind: "hotel",
+    title: stay.name,
+    detail: `${formatShortDate(stay.checkInDate)} → ${formatShortDate(stay.checkOutDate)} · ${plural(hotelNights(stay), "notte", "notti")}${stay.confirmationNumber ? ` · n. ${stay.confirmationNumber}` : ""}${paidByText(stay.paidBy)}`,
+    date: stay.checkInDate,
+    section: "hotels",
+    stopId: stay.stopId,
+  }));
+  const transport = legs.filter((leg) => leg.included && leg.bookingStatus === "prenotato").map((leg): BookingEntry => {
+    const date = legDateOf(leg);
+    const times = leg.departureTime ? ` ${leg.departureTime}${leg.arrivalTime ? `→${leg.arrivalTime}` : ""}` : "";
+    const stations = leg.fromStation ? ` · ${leg.fromStation}${leg.toStation ? ` → ${leg.toStation}` : ""}` : "";
+    return {
+      id: `leg-${leg.id}`,
+      kind: "transport",
+      title: `${names.get(leg.fromId) || "?"} → ${names.get(leg.toId) || "?"}${leg.serviceNumber ? ` · ${leg.serviceNumber}` : ""}`,
+      detail: `${formatShortDate(date)}${times}${stations}${leg.bookingRef ? ` · n. ${leg.bookingRef}` : ""}${paidByText(leg.paidBy)}`,
+      date,
+      section: "transport",
+      anchor: `leg-${leg.id}`,
+    };
+  });
+  const agenda = plan.scheduleItems.filter((item) => item.bookingStatus === "prenotato").map((item): BookingEntry => ({
+    id: `item-${item.id}`,
+    kind: "agenda",
+    title: item.name,
+    detail: `${formatShortDate(item.date)} · ${item.startTime} · ${names.get(item.stopId) || ""}${paidByText(item.paidBy)}`,
     date: item.date,
     section: "calendar",
     anchor: `plan-${item.id}`,
@@ -954,6 +995,7 @@ export function buildView(plan: PlanData) {
     budget: computeBudget(plan, legs, legLabel, legDateOf),
     issues: planIssues(plan, calendar, legs),
     openBookings: openBookings(plan, timeline, legs, legDateOf),
+    doneBookings: doneBookings(plan, legs, legDateOf),
   };
 }
 
