@@ -6,18 +6,18 @@ gratuito Firebase Spark.
 
 Permette di:
 
-- modificare tappe e notti (le 17 notti tra i voli sono fisse) con la striscia dei giorni sempre visibile;
+- seguire l’itinerario definitivo (tappe e notti non si modificano più) con la striscia dei giorni sempre visibile;
+- vedere in **«Da prenotare»** (in «Checklist & note») cosa manca: notti senza hotel prenotato, tratte
+  aperte con la data di apertura delle vendite 12306, biglietti dell’agenda ancora da comprare;
 - vedere in **«Da sistemare»** i controlli automatici: notti senza hotel o con due hotel, hotel prenotati
   con date diverse dalla tappa, attività rimaste senza giornata, orari sovrapposti, tratte escluse;
-- organizzare ogni giornata per orario (lista o vista a ore), spostare un blocco su un altro giorno e
-  mandare in agenda le **attività clou** di ogni città nel primo orario libero;
+- organizzare ogni giornata per orario (lista o vista a ore) e spostare un blocco su un altro giorno;
 - gestire gli hotel tappa per tappa: quelli ancora da prenotare seguono da soli le date della tappa;
 - gestire le tratte tra città con orari, numero treno/volo e prenotazione (compaiono nel giorno giusto);
 - registrare le **spese effettive con chi ha pagato**, confrontare previsto e speso per categoria e
   vedere il **bilancio stile Splitwise** tra Alberto e Sofia;
 - inserire costi in euro o yuan con cambio modificabile;
-- vedere il percorso sulla mappa (strade, satellite o rilievo) e **aggiungere tappe toccando la mappa**:
-  il nome della città arriva da solo e la tappa va dove allunga meno il percorso;
+- vedere il percorso sulla mappa (strade, satellite o rilievo);
 - aprire luoghi in Google Maps, con nomi in cinese per il tassista;
 - vedere chi ha modificato cosa e scaricare un backup JSON del piano;
 - lavorare da computer e telefono anche offline: le modifiche si sincronizzano appena torna la rete.
@@ -55,9 +55,9 @@ npm run test:build  # compila il sito statico e lo verifica
 
 ### Struttura
 
-- `lib/planner/` — logica pura, testata con `node --test`: `catalog.ts` (tappe, proposte, nomi
-  cinesi, piano iniziale), `model.ts` (timeline, migrazioni dei salvataggi, unione con il cloud,
-  operazioni sulle tappe, budget, controlli), `utils.ts` (date, soldi, link).
+- `lib/planner/` — logica pura, testata con `node --test`: `catalog.ts` (tappe, nomi cinesi,
+  piano iniziale, checklist), `model.ts` (timeline, migrazioni dei salvataggi, unione con il cloud,
+  budget, controlli, cosa resta da prenotare), `utils.ts` (date, soldi, link).
 - `app/planner/` — interfaccia: `PlannerApp.tsx`, `usePlanSync.ts` (Firestore + copia locale),
   `sections/` (una sezione per scheda), mappa, griglia oraria, campi che salvano all'uscita.
 - `app/ChinaPlanner.tsx` — accesso con Google.

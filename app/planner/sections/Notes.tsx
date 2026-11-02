@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { CHECKLIST_GROUPS, PREP_CHECKLIST, defaultChecklist } from "@/lib/planner/catalog";
-import { trainSaleWindows } from "@/lib/planner/model";
+import { trainSaleWindows, type OpenBooking } from "@/lib/planner/model";
 import type { ChecklistGroup, ChecklistItem, PrepItem, TripLink } from "@/lib/planner/types";
 import { addDaysKey, formatShortDate, normalizeLinkUrl, safeExternalLink, uid } from "@/lib/planner/utils";
 import { usePlanner } from "../context";
@@ -10,6 +10,7 @@ import { TextArea, TextInput } from "../fields";
 import { BACKUP_KEY, type ChangeLogEntry } from "../usePlanSync";
 
 const prepById = new Map(PREP_CHECKLIST.map((item) => [item.id, item]));
+const BOOKING_ICONS: Record<OpenBooking["kind"], string> = { hotel: "⌂", transport: "🚄", agenda: "🎟" };
 
 type CheckRow = {
   key: string;
@@ -52,7 +53,8 @@ export function NotesSection() {
   }
 
   const rows: CheckRow[] = [
-    ...defaultChecklist.map((entry, index) => ({
+    // I punti ritirati restano nel catalogo solo per non spostare le spunte salvate per posizione.
+    ...defaultChecklist.flatMap((entry, index) => entry.retired ? [] : [{
       key: `default-${index}`,
       label: entry.label,
       done: Boolean(plan.checklist[index]),
@@ -63,7 +65,7 @@ export function NotesSection() {
       links: entry.links,
       guide: entry.guide,
       toggle: () => toggleDefault(index, entry.label),
-    })),
+    }]),
     ...plan.extraChecklist.map((item) => ({
       key: item.id,
       label: item.label,
@@ -140,6 +142,7 @@ export function NotesSection() {
 
   return <section className="planner-grid simple">
     <div className="stack">
+      <OpenBookingsCard />
       <article className="card">
         <div className="card-head"><div><p className="eyebrow">Preparazione</p><h2>Checklist</h2></div><span>{done} / {rows.length}</span></div>
         <p className="checklist-source">In ordine di scadenza, con i consigli di chi in Cina c’è già stato. Tocca «Come» per i dettagli; app, internet e consigli città per città sono nella <button type="button" onClick={() => goTo("guide")}>Guida</button>.</p>
@@ -260,4 +263,20 @@ export function HistorySection({ entries }: { entries: ChangeLogEntry[] }) {
       </div>}
     </article>
   </section>;
+}
+
+/** Cosa manca da prenotare: si ricava da hotel, tratte e agenda, quindi si svuota da solo. */
+function OpenBookingsCard() {
+  const { view, goTo } = usePlanner();
+  const open = view.openBookings;
+  return <article className="card open-bookings" id="open-bookings">
+    <div className="card-head"><div><p className="eyebrow">Si aggiorna da solo da hotel, trasporti e agenda</p><h2>Da prenotare</h2></div><span className={`fit-badge ${open.length ? "" : "ok"}`}>{open.length || "✓"}</span></div>
+    {open.length === 0 ? <p className="empty">Tutto prenotato: hotel, tratte e biglietti in agenda.</p> : <ul className="issue-list">
+      {open.map((entry) => <li key={entry.id}>
+        <span><b>{BOOKING_ICONS[entry.kind]} {entry.title}</b><small>{entry.detail}</small></span>
+        <button onClick={() => goTo(entry.section, { date: entry.date, stopId: entry.stopId, anchor: entry.anchor })}>Apri →</button>
+      </li>)}
+    </ul>}
+    <p className="checklist-source">Dall’agenda compaiono i blocchi con un prezzo e ancora «da prenotare»: se si paga sul posto, nel blocco scegliete «Nessuna prenotazione».</p>
+  </article>;
 }

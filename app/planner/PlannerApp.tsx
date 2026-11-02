@@ -140,13 +140,14 @@ export function PlannerApp({ user, demo }: { user: User | null; demo: boolean })
 
         <div className="flight-anchors">
           <div><span className="anchor-icon">↓</span><p><b>Arrivo a Pechino</b><strong>Martedì 17 novembre · 12:25</strong><small>PEK · transfer verso l’hotel</small></p></div>
-          <div className="window-meter"><span style={{ width: `${Math.min(100, (view.usedNights / TRIP_NIGHTS) * 100)}%` }} /><b>{view.usedNights} / {TRIP_NIGHTS} notti assegnate</b></div>
+          <div className="window-meter"><span style={{ width: `${Math.min(100, (view.bookedNights / TRIP_NIGHTS) * 100)}%` }} /><b>{view.bookedNights} / {TRIP_NIGHTS} notti con hotel prenotato</b></div>
           <div><span className="anchor-icon outbound">↑</span><p><b>Partenza da Shanghai</b><strong>Venerdì 4 dicembre · 09:40</strong><small>PVG · arrivo consigliato 06:40</small></p></div>
         </div>
 
         <nav className="nav" aria-label="Sezioni del viaggio">
           {NAV_ITEMS.map(([id, label]) => <button key={id} className={section === id ? "active" : ""} onClick={() => setSection(id)}>
             {label}{id === "itinerary" && view.issues.length > 0 && <i className="nav-badge" title="Cose da sistemare">{view.issues.length}</i>}
+            {id === "planner" && view.openBookings.length > 0 && <i className="nav-badge" title="Da prenotare">{view.openBookings.length}</i>}
           </button>)}
         </nav>
         <div className={`sync-bar ${status}`}>

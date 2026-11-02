@@ -2,16 +2,15 @@
 import {
   ACTIVITY_ZH,
   ARRIVAL_KEY,
+  CHONGQING_STOP,
   DEFAULT_CNY_PER_EURO,
   DEFAULT_COST_ENTRIES,
   DEFAULT_TRANSFER_ITEMS,
   FLIGHTS_COST,
   KNOWN_LEG_PRESETS,
-  LOCKED_STOP_IDS,
   PLAN_VERSION,
   PREP_CHECKLIST,
   STOP_ZH,
-  SUGGESTED_STOPS,
   TRAIN_SALE_DAYS,
   TRIP_NIGHTS,
   defaultChecklist,
@@ -19,8 +18,8 @@ import {
   initialSchedule,
   initialStops,
 } from "./catalog.ts";
-import type { Activity, ExpenseCategory, HotelStay, Leg, Payer, PlanData, ScheduleItem, ScheduleKind, Settlement, Stop, SuggestedStop } from "./types.ts";
-import { addDaysKey, diffDaysKey, formatShortDate, isDateKey, minutesToTime, plural, sameValue, timeToMinutes, toEuro, uid } from "./utils.ts";
+import type { ExpenseCategory, HotelStay, Leg, Payer, PlanData, ScheduleItem, ScheduleKind, Settlement, Stop } from "./types.ts";
+import { addDaysKey, diffDaysKey, formatShortDate, isDateKey, plural, sameValue, timeToMinutes, toEuro, uid } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
 // Itinerario: tappe → date
@@ -39,10 +38,6 @@ export function buildTimeline(stops: Stop[]): TimelineEntry[] {
 
 export function totalNights(stops: Stop[]) {
   return stops.reduce((sum, stop) => sum + stop.nights, 0);
-}
-
-export function isLockedStop(stopId: string) {
-  return LOCKED_STOP_IDS.includes(stopId);
 }
 
 /** Una tratta per ogni coppia di tappe consecutive: salvata, oppure ricavata dai trasferimenti noti. */
@@ -248,22 +243,6 @@ export function conflictingIds(items: Array<{ id: string; startTime: string; end
     }
   });
   return ids;
-}
-
-/** Primo orario libero della giornata: prima gli orari "classici", poi ogni mezz'ora, accorciando se serve. */
-export function findFreeSlot(busy: Array<{ startTime: string; endTime: string }>, duration = 180): [string, string] {
-  const ranges = busy.map((item) => [timeToMinutes(item.startTime), Math.max(timeToMinutes(item.endTime), timeToMinutes(item.startTime) + 30)]);
-  const preferred = ["09:00", "14:00", "18:00", "10:30", "15:30"].map(timeToMinutes);
-  const sweep = Array.from({ length: 29 }, (_, index) => 7 * 60 + index * 30);
-  for (const length of [duration, 120, 90, 60]) {
-    for (const start of [...preferred, ...sweep]) {
-      const end = start + length;
-      if (end > 23 * 60) continue;
-      if (!ranges.some(([busyStart, busyEnd]) => start < busyEnd && end > busyStart)) return [minutesToTime(start), minutesToTime(end)];
-    }
-  }
-  const latest = Math.max(...ranges.map(([, end]) => end), 20 * 60);
-  return [minutesToTime(latest), minutesToTime(latest + 60)];
 }
 
 // ---------------------------------------------------------------------------
@@ -475,9 +454,9 @@ export function migratePlan(input: PlanData): { plan: PlanData; notes: string[] 
       applied.push(change);
     };
     apply(setStopNights(plan, "beijing", 3));
-    for (const [id, afterId, nights] of [["chengdu", "xian", 2], ["chongqing", "chengdu", 1]] as const) {
-      const suggestion = SUGGESTED_STOPS.find((item) => item.id === id);
-      if (suggestion) apply(insertStop(plan, stopFromSuggestion(suggestion), { afterId, nights, donorId: "shanghai" }));
+    const chengdu = initialStops.find((stop) => stop.id === "chengdu")!;
+    for (const [stop, afterId, nights] of [[chengdu, "xian", 2], [CHONGQING_STOP, "chengdu", 1]] as const) {
+      apply(insertStop(plan, stop, { afterId, nights, donorId: "shanghai" }));
     }
     if (applied.length) notes.push(["Itinerario definitivo: Pechino 3 notti (hotel di Xi’an dal 20 nov), poi Chengdu 2 notti e Chongqing 1.", ...applied.map((change) => change.notice).filter(Boolean)].join(" "));
   }
@@ -510,6 +489,18 @@ export function migratePlan(input: PlanData): { plan: PlanData; notes: string[] 
       plan.extraChecklist = [...plan.extraChecklist, ...missing.map(({ id, label, group }) => ({ id, label, group, done: false }))];
       notes.push(`Checklist ampliata con ${plural(missing.length, "punto", "punti")} dai consigli di chi in Cina c’è già stato (sezione «Checklist & note»).`);
     }
+  }
+
+  if (version < 9) {
+    // v9, fine della pianificazione: via le attività clou non usate, le città scartate e le tratte di
+    // percorsi abbandonati. L'agenda resta com'è (ogni blocco tiene nome e prezzo suoi).
+    const consecutive = new Set(plan.stops.slice(0, -1).map((stop, index) => `${stop.id}>${plan.stops[index + 1].id}`));
+    const ideas = plan.stops.reduce((sum, stop) => sum + stop.activities.length, 0);
+    const oldLegs = plan.legs.filter((leg) => !consecutive.has(`${leg.fromId}>${leg.toId}`) && leg.bookingStatus !== "prenotato");
+    plan.stops = plan.stops.map((stop) => (stop.activities.length ? { ...stop, activities: [] } : stop));
+    plan.legs = plan.legs.filter((leg) => !oldLegs.includes(leg));
+    plan.dismissedSuggestions = [];
+    if (ideas || oldLegs.length) notes.push("Pianificazione chiusa: tolte le idee non messe in agenda e le tratte dei percorsi scartati. Ora in «Checklist & note» c’è l’elenco di cosa resta da prenotare.");
   }
 
   // Pulizia sempre attiva: niente avanzi di tappe eliminate (tranne ciò che è già prenotato/pagato).
@@ -627,7 +618,8 @@ export function changedKeys(base: PlanData | null, plan: PlanData) {
 }
 
 // ---------------------------------------------------------------------------
-// Operazioni sulle tappe (date dei voli fisse: 17 notti in tutto)
+// Operazioni sulle tappe (date dei voli fisse: 17 notti in tutto). Le tappe ormai sono definitive:
+// restano solo quelle che servono alla migrazione v5.
 // ---------------------------------------------------------------------------
 
 export type PlanChange = { plan: PlanData; notice: string; ok: boolean };
@@ -643,54 +635,6 @@ export function setStopNights(plan: PlanData, stopId: string, requested: number)
     : "";
   if (nights === stop.nights) return { plan, notice, ok: false };
   return { plan: refreshDerived({ ...plan, stops: plan.stops.map((item) => (item.id === stopId ? { ...item, nights } : item)) }), notice, ok: true };
-}
-
-export function moveStop(plan: PlanData, stopId: string, direction: -1 | 1): PlanData {
-  const index = plan.stops.findIndex((stop) => stop.id === stopId);
-  const target = index + direction;
-  if (index <= 0 || index >= plan.stops.length - 1 || target <= 0 || target >= plan.stops.length - 1) return plan;
-  const stops = [...plan.stops];
-  [stops[index], stops[target]] = [stops[target], stops[index]];
-  return refreshDerived({ ...plan, stops });
-}
-
-/** Cosa succede eliminando la tappa: serve per chiedere conferma con i numeri giusti. */
-export function stopRemovalImpact(plan: PlanData, stopId: string) {
-  const index = plan.stops.findIndex((stop) => stop.id === stopId);
-  const stop = plan.stops[index];
-  const receiver = index > 0 ? plan.stops[index - 1] : plan.stops[index + 1];
-  const items = plan.scheduleItems.filter((item) => item.stopId === stopId);
-  const stays = plan.hotelStays.filter((stay) => stay.stopId === stopId);
-  const overflow = Math.max(0, totalNights(plan.stops) - TRIP_NIGHTS);
-  return {
-    stop,
-    receiver,
-    givenNights: stop ? Math.max(0, stop.nights - overflow) : 0,
-    removedItems: items.filter((item) => item.bookingStatus !== "prenotato").length,
-    keptItems: items.filter((item) => item.bookingStatus === "prenotato").length,
-    removedStays: stays.filter((stay) => stay.bookingStatus !== "prenotato").length,
-    keptStays: stays.filter((stay) => stay.bookingStatus === "prenotato").length,
-  };
-}
-
-/** Elimina una tappa: le sue notti passano alla tappa precedente, così la finestra resta piena. */
-export function removeStop(plan: PlanData, stopId: string): PlanChange {
-  if (isLockedStop(stopId)) return { plan, notice: "", ok: false };
-  const impact = stopRemovalImpact(plan, stopId);
-  if (!impact.stop) return { plan, notice: "", ok: false };
-  const stops = plan.stops
-    .filter((stop) => stop.id !== stopId)
-    .map((stop) => (impact.receiver && stop.id === impact.receiver.id ? { ...stop, nights: stop.nights + impact.givenNights } : stop));
-  const next = refreshDerived({
-    ...plan,
-    stops,
-    scheduleItems: plan.scheduleItems.filter((item) => item.stopId !== stopId || item.bookingStatus === "prenotato"),
-    hotelStays: plan.hotelStays.filter((stay) => stay.stopId !== stopId || stay.bookingStatus === "prenotato"),
-  });
-  const parts = [`${impact.stop.name} eliminata.`];
-  if (impact.givenNights && impact.receiver) parts.push(`${plural(impact.givenNights, "notte passa", "notti passano")} a ${impact.receiver.name}: ribilanciale quando vuoi.`);
-  if (impact.keptItems || impact.keptStays) parts.push(`Restano ${plural(impact.keptItems + impact.keptStays, "prenotazione già fatta", "prenotazioni già fatte")}: le trovi in «Da sistemare».`);
-  return { plan: next, notice: parts.join(" "), ok: true };
 }
 
 /** Notti per una nuova tappa: prima quelle libere, poi dalla tappa scelta, poi dalle più lunghe (minimo 1 a testa). */
@@ -735,96 +679,11 @@ export function insertStop(plan: PlanData, stop: Stop, options: { afterId: strin
   return { plan: refreshDerived({ ...plan, stops, hotelStays }), notice: allocation.notice, ok: true };
 }
 
-/** Distanza in linea d'aria tra due punti, in km. */
-export function distanceKm(from: { lat: number; lng: number }, to: { lat: number; lng: number }) {
-  const rad = Math.PI / 180;
-  const dLat = (to.lat - from.lat) * rad;
-  const dLng = (to.lng - from.lng) * rad;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(from.lat * rad) * Math.cos(to.lat * rad) * Math.sin(dLng / 2) ** 2;
-  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-/** Tappa dopo cui inserire un nuovo punto allungando il meno possibile il percorso (mai dopo l'ultima). */
-export function bestInsertionAfter(stops: Stop[], point: { lat: number; lng: number }) {
-  let bestId = stops[0]?.id || "";
-  let bestDetour = Infinity;
-  stops.slice(0, -1).forEach((stop, index) => {
-    const next = stops[index + 1];
-    const detour = distanceKm(stop, point) + distanceKm(point, next) - distanceKm(stop, next);
-    if (detour < bestDetour) {
-      bestDetour = detour;
-      bestId = stop.id;
-    }
-  });
-  return bestId;
-}
-
-export function stopFromSuggestion(suggestion: SuggestedStop): Stop {
-  return {
-    id: suggestion.id,
-    name: suggestion.name,
-    ...(STOP_ZH[suggestion.id] ? { nameZh: STOP_ZH[suggestion.id] } : {}),
-    lat: suggestion.lat,
-    lng: suggestion.lng,
-    nights: suggestion.nights,
-    hotelNightly: suggestion.hotelNightly,
-    activities: suggestion.activities.map((activity) => ({ ...activity, ...(ACTIVITY_ZH[activity.id] ? { nameZh: ACTIVITY_ZH[activity.id] } : {}) })),
-  };
-}
-
 /** Modifica una tratta; se era solo ricavata (mai salvata) la salva con la modifica. */
 export function updateLeg(plan: PlanData, legId: string, patch: Partial<Leg>): PlanData {
   if (plan.legs.some((leg) => leg.id === legId)) return { ...plan, legs: plan.legs.map((leg) => (leg.id === legId ? { ...leg, ...patch } : leg)) };
   const derived = normalizeLegs(plan.stops, plan.legs).find((leg) => leg.id === legId);
   return derived ? { ...plan, legs: [...plan.legs, { ...derived, ...patch }] } : plan;
-}
-
-// ---------------------------------------------------------------------------
-// Agenda: attività clou → blocco in agenda
-// ---------------------------------------------------------------------------
-
-export function scheduleActivity(plan: PlanData, stopId: string, activity: Activity, options: { day?: number; id?: string } = {}): { plan: PlanData; item: ScheduleItem } | null {
-  const timeline = buildTimeline(plan.stops);
-  const entry = timeline.find((item) => item.stop.id === stopId);
-  if (!entry) return null;
-  const stopItems = plan.scheduleItems.filter((item) => item.stopId === stopId);
-  const legs = normalizeLegs(plan.stops, plan.legs);
-  const busyFor = (dayIndex: number) => {
-    const date = addDaysKey(entry.arrival, dayIndex);
-    const leg = legs.find((item) => item.included && item.toId === stopId && dayIndex === 0 && item.departureTime);
-    return [
-      ...stopItems.filter((item) => item.date === date),
-      ...(leg?.departureTime ? [{ startTime: leg.departureTime, endTime: leg.arrivalTime || minutesToTime(timeToMinutes(leg.departureTime) + 120) }] : []),
-    ];
-  };
-  const targetDay = options.day ?? Array.from({ length: entry.stop.nights }, (_, index) => index)
-    .sort((left, right) => busyFor(left).length - busyFor(right).length || left - right)[0];
-  const [startTime, endTime] = findFreeSlot(busyFor(targetDay));
-  const item: ScheduleItem = {
-    id: options.id || uid("plan"),
-    stopId,
-    day: targetDay,
-    date: addDaysKey(entry.arrival, targetDay),
-    startTime,
-    endTime,
-    name: activity.name,
-    ...(activity.nameZh ? { nameZh: activity.nameZh } : {}),
-    kind: "activity",
-    category: "visita",
-    location: entry.stop.name,
-    ...(entry.stop.nameZh ? { locationZh: entry.stop.nameZh } : {}),
-    notes: activity.description,
-    price: activity.price,
-    currency: activity.currency || "EUR",
-    bookingStatus: "da-prenotare",
-    ...(activity.sourceUrl ? { sourceUrl: activity.sourceUrl } : {}),
-    sourceActivityId: activity.id,
-  };
-  const stops = plan.stops.map((stop) => stop.id !== stopId ? stop : {
-    ...stop,
-    activities: stop.activities.map((entryActivity) => (entryActivity.id === activity.id ? { ...entryActivity, selected: true } : entryActivity)),
-  });
-  return { plan: refreshDerived({ ...plan, stops, scheduleItems: [...plan.scheduleItems, item] }), item };
 }
 
 // ---------------------------------------------------------------------------
@@ -999,6 +858,68 @@ export function planIssues(plan: PlanData, calendar: CalendarDay[], legs: Leg[])
 }
 
 // ---------------------------------------------------------------------------
+// Cosa resta da prenotare, in cima a «Checklist & note»
+// ---------------------------------------------------------------------------
+
+export type OpenBooking = {
+  id: string;
+  kind: "hotel" | "transport" | "agenda";
+  title: string;
+  detail: string;
+  date: string;
+  section: "hotels" | "transport" | "calendar";
+  stopId?: string;
+  anchor?: string;
+};
+
+/**
+ * Notti senza un hotel prenotato (per tappa), tratte non ancora prenotate e blocchi d'agenda con un
+ * prezzo ancora «da prenotare», in ordine di data.
+ */
+export function openBookings(plan: PlanData, timeline: TimelineEntry[], legs: Leg[], legDateOf: (leg: Leg) => string): OpenBooking[] {
+  const names = new Map(plan.stops.map((stop) => [stop.id, stop.name]));
+  const booked = plan.hotelStays.filter((stay) => stay.bookingStatus === "prenotato");
+  const hotels = timeline.flatMap(({ stop, arrival }): OpenBooking[] => {
+    const missing = Array.from({ length: stop.nights }, (_, night) => addDaysKey(arrival, night))
+      .filter((date) => diffDaysKey(ARRIVAL_KEY, date) < TRIP_NIGHTS && !booked.some((stay) => stay.checkInDate <= date && stay.checkOutDate > date));
+    if (!missing.length) return [];
+    return [{
+      id: `hotel-${stop.id}`,
+      kind: "hotel",
+      title: `Hotel a ${stop.name}`,
+      detail: `${formatShortDate(missing[0])} → ${formatShortDate(addDaysKey(missing.at(-1)!, 1))} · ${plural(missing.length, "notte", "notti")}`,
+      date: missing[0],
+      section: "hotels",
+      stopId: stop.id,
+    }];
+  });
+  const sales = new Map(trainSaleWindows(legs, legDateOf).map(({ leg, opensOn }) => [leg.id, opensOn]));
+  const transport = legs.filter((leg) => leg.included && leg.bookingStatus !== "prenotato").map((leg): OpenBooking => {
+    const date = legDateOf(leg);
+    const opensOn = sales.get(leg.id);
+    return {
+      id: `leg-${leg.id}`,
+      kind: "transport",
+      title: `${names.get(leg.fromId) || "?"} → ${names.get(leg.toId) || "?"}`,
+      detail: `${leg.mode} · ${formatShortDate(date)}${opensOn ? ` · vendite 12306 dal ${formatShortDate(opensOn)}` : ""}`,
+      date,
+      section: "transport",
+      anchor: `leg-${leg.id}`,
+    };
+  });
+  const agenda = plan.scheduleItems.filter((item) => item.bookingStatus === "da-prenotare" && item.price > 0).map((item): OpenBooking => ({
+    id: `item-${item.id}`,
+    kind: "agenda",
+    title: item.name,
+    detail: `${formatShortDate(item.date)} · ${item.startTime} · ${names.get(item.stopId) || ""}`,
+    date: item.date,
+    section: "calendar",
+    anchor: `plan-${item.id}`,
+  }));
+  return [...hotels, ...transport, ...agenda].sort((left, right) => left.date.localeCompare(right.date));
+}
+
+// ---------------------------------------------------------------------------
 // Vista derivata usata dall'interfaccia
 // ---------------------------------------------------------------------------
 
@@ -1013,6 +934,7 @@ export function buildView(plan: PlanData) {
   const legLabel = (leg: Leg) => `${stopById.get(leg.fromId)?.name || "?"} → ${stopById.get(leg.toId)?.name || "?"}`;
   const legDateOf = (leg: Leg) => legDate(timeline, leg);
   const usedNights = totalNights(plan.stops);
+  const bookedNights = calendar.filter((day) => day.type !== "over" && plan.hotelStays.some((stay) => stay.bookingStatus === "prenotato" && stay.checkInDate <= day.dateKey && stay.checkOutDate > day.dateKey)).length;
   return {
     timeline,
     legs,
@@ -1023,9 +945,11 @@ export function buildView(plan: PlanData) {
     legLabel,
     legDateOf,
     usedNights,
-    remainingNights: TRIP_NIGHTS - usedNights,
+    /** Notti del viaggio coperte da un hotel prenotato. */
+    bookedNights,
     budget: computeBudget(plan, legs, legLabel, legDateOf),
     issues: planIssues(plan, calendar, legs),
+    openBookings: openBookings(plan, timeline, legs, legDateOf),
   };
 }
 

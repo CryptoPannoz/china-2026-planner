@@ -5,6 +5,17 @@ export statico su GitHub Pages; dati in Firestore (progetto `china-2026-bebroggi
 `travel-plans/china-2026` + sottocollezione `change-log`). Accesso Google limitato alle due email
 (anche in `firestore.rules`).
 
+## Fase del viaggio
+- La pianificazione è chiusa (2 nov 2026): tappe e notti sono definitive, niente più proposte di città,
+  attività clou o modifica delle notti. Ora si inseriscono prenotazioni e si segue «Da prenotare» in
+  «Checklist & note».
+
+## Inbox biglietti
+- `inbox/` (esclusa da git: il repo è **pubblico**, entra solo `inbox/LEGGIMI.md`): Alberto ci lascia
+  biglietti e conferme. Per ogni file: leggerlo, confrontarlo con Gmail, inserirlo nel planner dal sito
+  (Claude in Chrome, sezione giusta), poi spostarlo in `inbox/fatti/`. Mai copiare PIN, codici di accesso
+  o numeri di passaporto.
+
 ## Deploy
 - Push su `origin/main` → GitHub Actions (`.github/workflows/pages.yml`): lint, `npm test`, build, Pages.
 - Le regole Firestore non passano dalla CI: vanno pubblicate a mano con la CLI Firebase.

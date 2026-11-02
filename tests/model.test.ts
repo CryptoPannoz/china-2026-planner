@@ -1,15 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ARRIVAL_KEY, DEFAULT_TRANSFER_ITEMS, PLAN_VERSION, PREP_CHECKLIST, SUGGESTED_STOPS, TRIP_NIGHTS, defaultChecklist, initialLegs, initialSchedule, initialStops } from "../lib/planner/catalog.ts";
+import { ARRIVAL_KEY, CHONGQING_STOP, DEFAULT_TRANSFER_ITEMS, PLAN_VERSION, PREP_CHECKLIST, TRIP_NIGHTS, defaultChecklist, initialLegs, initialSchedule, initialStops } from "../lib/planner/catalog.ts";
 import { CITY_TIPS, GUIDE_APP_GROUPS, GUIDE_INTERNET } from "../lib/planner/guide.ts";
 import {
-  bestInsertionAfter,
   buildCalendar,
   buildTimeline,
+  buildView,
   changedKeys,
   computeBudget,
   conflictingIds,
-  findFreeSlot,
   insertStop,
   isOverflowItem,
   legDate,
@@ -19,8 +18,6 @@ import {
   normalizeLegs,
   planIssues,
   refreshDerived,
-  removeStop,
-  scheduleActivity,
   seedPlan,
   setStopNights,
   settleUpEntry,
@@ -147,19 +144,6 @@ test("un hotel prenotato non cambia date da solo ma viene segnalato", () => {
   assert.ok(issues.some((issue) => issue.id === `hotel-dates-${stay.id}`));
 });
 
-test("eliminando una tappa le notti passano alla precedente e restano solo le prenotazioni pagate", () => {
-  const plan = seedPlan();
-  plan.scheduleItems = plan.scheduleItems.map((item) => (item.id === "d13-river" ? { ...item, bookingStatus: "prenotato" } : item));
-  const result = removeStop(plan, "fenghuang");
-  assert.ok(result.ok);
-  assert.equal(totalNights(result.plan.stops), TRIP_NIGHTS);
-  assert.equal(result.plan.stops.find((stop) => stop.id === "zhangjiajie")!.nights, 3);
-  assert.ok(!result.plan.hotelStays.some((stay) => stay.stopId === "fenghuang"));
-  assert.deepEqual(itemsIn(result.plan, "fenghuang").map((item) => item.id), ["d13-river"]);
-  assert.match(result.notice, /passa a Zhangjiajie/);
-  assert.equal(removeStop(plan, "beijing").ok, false);
-});
-
 test("aggiungere una tappa prende le notti dalla tappa scelta e crea il suo hotel", () => {
   const plan = seedPlan();
   const result = insertStop(plan, { id: "pingyao", name: "Pingyao", lat: 37.2, lng: 112.2, nights: 1, hotelNightly: 45, activities: [] }, { afterId: "beijing", nights: 1, donorId: "kunming" });
@@ -284,14 +268,6 @@ test("subito dopo l'aggiornamento, le modifiche dal vecchio sito non si perdono"
   assert.ok(changedKeys(base, merged).includes("scheduleItems"));
 });
 
-test("un punto cliccato sulla mappa si inserisce dove allunga meno il percorso", () => {
-  const plan = seedPlan();
-  assert.equal(bestInsertionAfter(plan.stops, { lat: 37.2, lng: 112.2 }), "beijing"); // Pingyao, tra Pechino e Xi'an
-  assert.equal(bestInsertionAfter(plan.stops, { lat: 29.56, lng: 106.55 }), "kunming"); // Chongqing, sulla strada Kunming → Zhangjiajie
-  assert.equal(bestInsertionAfter(plan.stops, { lat: 30.27, lng: 120.15 }), "fenghuang"); // Hangzhou, arrivando da ovest prima di Wuzhen
-  assert.notEqual(bestInsertionAfter(plan.stops, { lat: 31.3, lng: 121.6 }), "shanghai");
-});
-
 test("rileva anche le sovrapposizioni non consecutive", () => {
   const ids = conflictingIds([
     { id: "a", startTime: "09:00", endTime: "17:00" },
@@ -300,22 +276,6 @@ test("rileva anche le sovrapposizioni non consecutive", () => {
     { id: "d", startTime: "18:00", endTime: "19:00" },
   ]);
   assert.deepEqual([...ids].sort(), ["a", "b", "c"]);
-});
-
-test("l'orario libero si adatta ai buchi della giornata", () => {
-  assert.deepEqual(findFreeSlot([{ startTime: "08:00", endTime: "14:30" }, { startTime: "17:30", endTime: "20:30" }]), ["14:30", "17:30"]);
-  assert.deepEqual(findFreeSlot([{ startTime: "07:00", endTime: "12:00" }, { startTime: "13:00", endTime: "23:00" }]), ["12:00", "13:00"]);
-});
-
-test("mettere in agenda un'attività clou sceglie un orario libero", () => {
-  const plan = seedPlan();
-  const beijing = plan.stops.find((stop) => stop.id === "beijing")!;
-  const activity = beijing.activities.find((item) => item.id === "temple-heaven")!;
-  const result = scheduleActivity(plan, "beijing", activity, { day: 1 })!;
-  const dayItems = result.plan.scheduleItems.filter((item) => item.date === result.item.date);
-  assert.equal(conflictingIds(dayItems).size, 0);
-  assert.equal(result.item.day, 1);
-  assert.ok(result.plan.stops.find((stop) => stop.id === "beijing")!.activities.find((item) => item.id === "temple-heaven")!.selected);
 });
 
 test("il budget mette ogni voce nella stessa categoria nel previsionale e nel consuntivo", () => {
@@ -350,11 +310,12 @@ test("v5: Pechino 3 notti per l'hotel di Xi'an dal 20 nov, poi Chengdu (2) e Cho
     buildTimeline(plan.stops).map((entry) => `${entry.stop.id} ${entry.arrival} ${entry.stop.nights}`),
     ["beijing 2026-11-17 3", "xian 2026-11-20 3", "chengdu 2026-11-23 2", "chongqing 2026-11-25 1", "zhangjiajie 2026-11-26 4", "shanghai 2026-11-30 4"],
   );
-  assert.ok(plan.stops.find((stop) => stop.id === "chengdu")!.activities.some((activity) => activity.id === "pandas"));
   assert.ok(plan.hotelStays.some((stay) => stay.stopId === "chongqing"));
   assert.match(notes.join(" "), /Itinerario definitivo/);
   // Una volta salvata in v5 non si riapplica, anche se poi togliete una tappa.
-  const again = migratePlan(shapePlan(clone(removeStop(plan, "chongqing").plan))!);
+  const withoutChongqing = clone(plan);
+  withoutChongqing.stops = withoutChongqing.stops.filter((stop) => stop.id !== "chongqing");
+  const again = migratePlan(shapePlan(withoutChongqing)!);
   assert.ok(!again.plan.stops.some((stop) => stop.id === "chongqing"));
   assert.deepEqual(again.notes, []);
 });
@@ -455,7 +416,46 @@ test("guida: schede, checklist e tappe si rimandano a id che esistono", () => {
   const checkIds = new Set(PREP_CHECKLIST.map((item) => item.id));
   for (const app of apps) if (app.checkId) assert.ok(checkIds.has(app.checkId), `${app.id} → ${app.checkId}`);
   for (const item of [...PREP_CHECKLIST, ...defaultChecklist]) if (item.guide) assert.ok(anchors.has(item.guide), `${item.label} → ${item.guide}`);
-  const stopIds = new Set([...initialStops, ...SUGGESTED_STOPS].map((stop) => stop.id));
+  const stopIds = new Set([...initialStops, CHONGQING_STOP].map((stop) => stop.id));
   for (const stopId of Object.keys(CITY_TIPS)) assert.ok(stopIds.has(stopId), stopId);
   assert.ok(PREP_CHECKLIST.every((item) => !item.links?.some((link) => link.url.includes("adormo"))), "niente rimandi al sito con login");
+});
+
+test("v9: fine della pianificazione, via idee, città scartate e tratte vecchie; agenda e prenotazioni restano", () => {
+  const seeded = seedPlan();
+  const saved = clone({
+    ...seeded,
+    itineraryVersion: 8,
+    stops: seeded.stops.map((stop) => (stop.id === "beijing" ? { ...stop, activities: [{ id: "temple-heaven", name: "Tempio del Cielo", description: "", price: 10, selected: false }] } : stop)),
+    legs: [
+      ...seeded.legs,
+      { id: "chongqing-kunming", fromId: "chongqing", toId: "kunming", mode: "✈️ Volo", duration: "1h30", cost: 90, included: true, note: "" },
+      { id: "old-booked", fromId: "guilin", toId: "xian", mode: "🚄 Alta velocità", duration: "5h", cost: 60, included: true, note: "", bookingStatus: "prenotato" as const },
+    ],
+    dismissedSuggestions: ["guilin", "pingyao"],
+  });
+  const { plan, notes } = migratePlan(shapePlan(saved)!);
+  assert.deepEqual(plan.stops.flatMap((stop) => stop.activities), []);
+  assert.deepEqual(plan.dismissedSuggestions, []);
+  assert.ok(!plan.legs.some((leg) => leg.id === "chongqing-kunming"));
+  assert.ok(plan.legs.some((leg) => leg.id === "old-booked"), "una tratta pagata non si butta");
+  assert.equal(plan.scheduleItems.length, seeded.scheduleItems.length);
+  assert.match(notes.join(" "), /Pianificazione chiusa/);
+  assert.deepEqual(migratePlan(shapePlan(clone(plan))!).notes, []);
+});
+
+test("da prenotare: notti senza hotel prenotato, tratte aperte e biglietti in agenda, in ordine di data", () => {
+  const plan = seedPlan();
+  plan.hotelStays = plan.hotelStays.map((stay) => (stay.stopId === "beijing" ? { ...stay, bookingStatus: "prenotato", totalPrice: 300 } : stay));
+  plan.legs = plan.legs.map((leg) => (leg.id === "beijing-xian" ? { ...leg, bookingStatus: "prenotato" } : leg));
+  const view = buildView(plan);
+  const byId = new Map(view.openBookings.map((entry) => [entry.id, entry]));
+  assert.ok(!byId.has("hotel-beijing"));
+  assert.equal(byId.get("hotel-xian")!.section, "hotels");
+  assert.ok(!byId.has("leg-beijing-xian"));
+  assert.match(byId.get("leg-xian-chengdu")!.detail, /vendite 12306 dal/);
+  const priced = plan.scheduleItems.filter((item) => item.bookingStatus === "da-prenotare" && item.price > 0);
+  assert.equal(view.openBookings.filter((entry) => entry.kind === "agenda").length, priced.length);
+  assert.deepEqual(view.openBookings.map((entry) => entry.date), [...view.openBookings.map((entry) => entry.date)].sort());
+  assert.equal(view.bookedNights, plan.stops[0].nights);
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { Leg, Stop, SuggestedStop } from "@/lib/planner/types";
+import type { Leg, Stop } from "@/lib/planner/types";
 
 type LatLng = [number, number];
 type LeafletLayer = { addTo(target: LeafletMap | LeafletLayerGroup): LeafletLayer; remove(): void };
@@ -11,7 +11,6 @@ type LeafletMarker = LeafletLayer & {
 };
 type LeafletPolyline = LeafletLayer & { bindTooltip(text: string, options?: Record<string, unknown>): LeafletPolyline };
 type LeafletLayerGroup = { addTo(map: LeafletMap): LeafletLayerGroup; clearLayers(): void };
-type LeafletMouseEvent = { latlng: { lat: number; lng: number } };
 type LeafletMap = {
   fitBounds(coords: LatLng[], options?: Record<string, unknown>): LeafletMap;
   invalidateSize(): void;
@@ -19,7 +18,6 @@ type LeafletMap = {
   setView(coords: LatLng, zoom: number, options?: Record<string, unknown>): LeafletMap;
   getZoom(): number;
   getContainer(): HTMLElement;
-  on(event: "click", handler: (event: LeafletMouseEvent) => void): LeafletMap;
   on(event: "zoomend", handler: () => void): LeafletMap;
 };
 type LeafletNamespace = {
@@ -88,43 +86,36 @@ const FAR_ZOOM = 6;
  * Mappa dell'itinerario. Creata una volta sola: quando cambiano tappe o tratte si ridisegnano solo
  * i segnaposto, così zoom e posizione restano dove li hai lasciati.
  */
-export function RouteMap({ stops, legs, suggestions, selectedStopId, pending, onStopClick, onSuggestionClick, onMapClick, children }: {
+export function RouteMap({ stops, legs, selectedStopId, onStopClick, children }: {
   stops: Stop[];
   legs: Leg[];
-  suggestions: SuggestedStop[];
   selectedStopId: string;
-  pending: { lat: number; lng: number } | null;
   onStopClick: (stopId: string) => void;
-  onSuggestionClick: (suggestionId: string) => void;
-  onMapClick: (lat: number, lng: number, zoom: number) => void;
   children?: ReactNode;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const routeLayerRef = useRef<LeafletLayerGroup | null>(null);
-  const extraLayerRef = useRef<LeafletLayerGroup | null>(null);
   const tilesRef = useRef<LeafletLayer[]>([]);
   const leafletRef = useRef<LeafletNamespace | null>(null);
-  const handlersRef = useRef({ onStopClick, onSuggestionClick, onMapClick });
+  const handlersRef = useRef({ onStopClick });
   const fittedRef = useRef(false);
   const [mapError, setMapError] = useState("");
   const [mapReady, setMapReady] = useState(false);
   const [baseMap, setBaseMap] = useState<BaseMap>("street");
 
   useEffect(() => {
-    handlersRef.current = { onStopClick, onSuggestionClick, onMapClick };
-  }, [onStopClick, onSuggestionClick, onMapClick]);
+    handlersRef.current = { onStopClick };
+  }, [onStopClick]);
 
   useEffect(() => {
     let cancelled = false;
     loadLeaflet().then((leaflet) => {
       if (cancelled || !containerRef.current) return;
       const map = leaflet.map(containerRef.current, { scrollWheelZoom: false, zoomControl: true, minZoom: 3 });
-      map.on("click", (event) => handlersRef.current.onMapClick(event.latlng.lat, event.latlng.lng, map.getZoom()));
       map.on("zoomend", () => map.getContainer().classList.toggle("zoom-far", map.getZoom() < FAR_ZOOM));
       mapRef.current = map;
       routeLayerRef.current = leaflet.layerGroup().addTo(map);
-      extraLayerRef.current = leaflet.layerGroup().addTo(map);
       leafletRef.current = leaflet;
       setMapReady(true);
     }).catch(() => {
@@ -135,7 +126,6 @@ export function RouteMap({ stops, legs, suggestions, selectedStopId, pending, on
       mapRef.current?.remove();
       mapRef.current = null;
       routeLayerRef.current = null;
-      extraLayerRef.current = null;
       tilesRef.current = [];
       fittedRef.current = false;
     };
@@ -197,37 +187,10 @@ export function RouteMap({ stops, legs, suggestions, selectedStopId, pending, on
     }
   }, [mapReady, stops, legs, selectedStopId]);
 
-  // Città da valutare e punto appena toccato.
-  useEffect(() => {
-    const leaflet = leafletRef.current;
-    const layer = extraLayerRef.current;
-    if (!mapReady || !leaflet || !layer) return;
-    layer.clearLayers();
-    suggestions.forEach((suggestion) => {
-      leaflet.marker([suggestion.lat, suggestion.lng], {
-        icon: leaflet.divIcon({ className: "route-pin-wrap", html: `<span class="route-pin suggested">?</span>`, iconSize: [26, 26], iconAnchor: [13, 13] }),
-        title: `${suggestion.name} (da valutare)`,
-        alt: `${suggestion.name} (da valutare)`,
-        bubblingMouseEvents: false,
-      })
-        .bindTooltip(`${suggestion.name} · da valutare`, { direction: "top", offset: [0, -14], className: "route-tooltip" })
-        .on("click", () => handlersRef.current.onSuggestionClick(suggestion.id))
-        .addTo(layer);
-    });
-    if (pending) {
-      leaflet.marker([pending.lat, pending.lng], {
-        icon: leaflet.divIcon({ className: "route-pin-wrap", html: `<span class="route-pin pending">+</span>`, iconSize: [34, 34], iconAnchor: [17, 17] }),
-        title: "Nuova tappa",
-        zIndexOffset: 2000,
-        bubblingMouseEvents: false,
-      }).addTo(layer);
-    }
-  }, [mapReady, suggestions, pending]);
-
   const selected = stops.find((stop) => stop.id === selectedStopId);
   return (
     <div className="real-map-shell">
-      <div ref={containerRef} className="real-map" aria-label="Mappa interattiva dell’itinerario in Cina: tocca un punto per aggiungere una tappa" />
+      <div ref={containerRef} className="real-map" aria-label="Mappa interattiva dell’itinerario in Cina" />
       {!mapReady && !mapError && <div className="map-loading">Caricamento mappa geografica…</div>}
       {mapError && <div className="map-error">{mapError}</div>}
       {mapReady && <div className="map-tools">

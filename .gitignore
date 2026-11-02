@@ -43,3 +43,7 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+
+# biglietti e conferme da inserire nel planner: privati, il repo è pubblico
+/inbox/*
+!/inbox/LEGGIMI.md

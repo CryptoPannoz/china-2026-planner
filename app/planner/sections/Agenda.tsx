@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { BUILT_IN_CATEGORIES, EXPENSE_CATEGORIES, KIND_LABELS, PAYER_LABELS } from "@/lib/planner/catalog";
-import { conflictingIds, isOverflowItem, scheduleActivity, scheduleKind, type CalendarDay } from "@/lib/planner/model";
+import { conflictingIds, isOverflowItem, scheduleKind, type CalendarDay } from "@/lib/planner/model";
 import type { Currency, ExpenseCategory, Payer, ScheduleItem, ScheduleKind } from "@/lib/planner/types";
 import { euro, formatCost, formatLongDate, formatShortDate, googleMapsSearchUrl, minutesToTime, plural, safeExternalLink, timeToMinutes, translateZhUrl, uid, webSearchUrl } from "@/lib/planner/utils";
 import { usePlanner } from "../context";
@@ -109,14 +109,6 @@ export function AgendaSection() {
     log("Spesa registrata", `${expense.label} · ${formatCost(expense.amount, expense.currency)} · ha pagato ${PAYER_LABELS[expense.paidBy]}`);
   }
 
-  function scheduleClou(activityId: string) {
-    const activity = stop?.activities.find((item) => item.id === activityId);
-    if (!stop || !activity) return;
-    const id = uid("plan");
-    update((current) => scheduleActivity(current, stop.id, activity, { id, day: day.dayInStop })?.plan ?? current);
-    log("Attività clou in agenda", `${activity.name} · ${formatShortDate(day.dateKey)}`);
-  }
-
   const hourBlocks: HourBlock[] = [
     ...items.map((item) => ({
       id: item.id,
@@ -205,18 +197,6 @@ export function AgendaSection() {
       {conflicts.size > 0 && <div className="agenda-warning"><b>Orari sovrapposti</b><span>I blocchi evidenziati si accavallano{legBlock && conflicts.has(legBlock.id) ? " (anche con la tratta del giorno)" : ""}: sistema inizio o fine.</span></div>}
       {overflowCount > 0 && <div className="agenda-warning"><b>Da ricollocare</b><span>{plural(overflowCount, "blocco era", "blocchi erano")} in un giorno che la tappa non ha più: usa «Giorno» per spostarli.</span></div>}
 
-      {stop && stop.activities.length > 0 && <div className="day-clou">
-        <span className="day-clou-label">✦ Attività clou di {stop.name}</span>
-        <div className="day-clou-chips">
-          {[...stop.activities].sort((a, b) => Number(b.selected) - Number(a.selected)).map((activity) => {
-            const scheduled = plan.scheduleItems.find((item) => item.sourceActivityId === activity.id && item.stopId === stop.id);
-            return <button key={activity.id} className={scheduled ? "done" : ""} title={scheduled ? `In agenda il ${formatShortDate(scheduled.date)}` : `Aggiungi a questa giornata · ${activity.description}`} onClick={() => (scheduled ? (scheduled.date === day.dateKey ? scrollTo(`plan-${scheduled.id}`) : setSelectedDate(scheduled.date)) : scheduleClou(activity.id))}>
-              <i>{scheduled ? "✓" : "+"}</i>{activity.name}{scheduled && scheduled.date !== day.dateKey ? <em>{formatShortDate(scheduled.date)}</em> : activity.price > 0 && <em>{formatCost(activity.price, activity.currency)}</em>}
-            </button>;
-          })}
-        </div>
-      </div>}
-
       {mode === "hours" && <article className="card hour-card">
         <div className="card-head"><div><p className="eyebrow">Vista a ore · {day.city}</p><h3>{formatLongDate(day.dateKey)}</h3></div><span className="subtle">Tocca un’ora libera per creare un blocco · tocca un blocco per modificarlo</span></div>
         <HourGrid blocks={hourBlocks} onPickTime={(time) => {
@@ -234,7 +214,7 @@ export function AgendaSection() {
       </article>}
 
       <div className="time-plan" hidden={mode === "hours"}>
-        {items.length === 0 && <div className="empty-day"><span>+</span><b>Giornata ancora libera</b><p>{day.stopId ? "Aggiungi un'attività clou qui sopra o un blocco con il modulo qui sotto." : "Prima assegna questa notte a una tappa dall'Itinerario."}</p></div>}
+        {items.length === 0 && <div className="empty-day"><span>+</span><b>Giornata ancora libera</b><p>{day.stopId ? "Aggiungi un blocco con il modulo qui sotto." : "Prima assegna questa notte a una tappa dall'Itinerario."}</p></div>}
         {items.map((item) => <ScheduleCard key={item.id} item={item} conflict={conflicts.has(item.id)} overflow={isOverflowItem(item, view.stopById.get(item.stopId))} city={day.city} days={assignableDays} categoryOptions={categoryOptions} onUpdate={(patch) => updateItem(item.id, patch)} onRemove={() => removeItem(item)} onMove={(dateKey) => moveItem(item, dateKey)} />)}
       </div>
 

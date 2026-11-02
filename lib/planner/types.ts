@@ -89,20 +89,6 @@ export type Stop = {
   activities: Activity[];
 };
 
-export type SuggestedStop = {
-  id: string;
-  name: string;
-  lat: number;
-  lng: number;
-  nights: number;
-  hotelNightly: number;
-  recap: string;
-  transport: string;
-  season: string;
-  insertAfterId: string;
-  activities: Activity[];
-};
-
 export type Leg = {
   id: string;
   fromId: string;
@@ -177,6 +163,8 @@ export type PrepItem = {
   links?: Array<{ label: string; url: string }>;
   /** Scheda della sezione «Guida» con i passi completi (id dell'elemento). */
   guide?: string;
+  /** Punto della fase di pianificazione, ormai chiusa: resta nel catalogo per non spostare le spunte, ma non si mostra. */
+  retired?: boolean;
 };
 
 export type TripLink = {
@@ -201,6 +189,7 @@ export type PlanData = {
   expenses: Expense[];
   settlements: Settlement[];
   customCategories: string[];
+  /** Città proposte e scartate in fase di pianificazione: non più usate, svuotate dalla v9. */
   dismissedSuggestions: string[];
   coverPhoto: string;
 };

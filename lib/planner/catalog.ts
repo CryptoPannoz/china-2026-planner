@@ -1,13 +1,11 @@
-import type { ChecklistGroup, ExpenseCategory, Leg, Payer, PrepItem, ScheduleItem, ScheduleKind, Stop, SuggestedStop } from "./types.ts";
+import type { ChecklistGroup, ExpenseCategory, Leg, Payer, PrepItem, ScheduleItem, ScheduleKind, Stop } from "./types.ts";
 
 // Date fisse dei voli intercontinentali: arrivo a Pechino e partenza da Shanghai.
 export const ARRIVAL_KEY = "2026-11-17";
 export const DEPARTURE_KEY = "2026-12-04";
 export const TRIP_NIGHTS = 17;
 export const FLIGHTS_COST = 1384.44;
-export const PLAN_VERSION = 8;
-/** Prima e ultima tappa coincidono con i voli: non si spostano e non si eliminano. */
-export const LOCKED_STOP_IDS = ["beijing", "shanghai"];
+export const PLAN_VERSION = 9;
 export const DEFAULT_CNY_PER_EURO = 8;
 
 export const BUILT_IN_CATEGORIES = [
@@ -183,289 +181,8 @@ export const initialStops: Stop[] = [
   },
 ];
 
-export const SUGGESTED_STOPS: SuggestedStop[] = [
-  {
-    // Tappa del piano originale: se l'avete tolta, torna con panda e attività già pronte.
-    ...initialStops.find((stop) => stop.id === "chengdu")!,
-    insertAfterId: "xian",
-    recap: "Panda giganti al mattino, case da tè, opera del Sichuan con il cambio faccia e la cucina più piccante della Cina. Dal 2025 c'è anche l'AV diretta per Zhangjiajie (~4h) che passa da Chongqing.",
-    transport: "AV da Xi'an Nord 3h30–4h; poi Chongqing 1h15–1h45 o Zhangjiajie Ovest diretto ~4h",
-    season: "Fresco e grigio (8–14°C), poca pioggia; panda attivi nelle mattine fredde",
-  },
-  {
-    id: "chongqing",
-    name: "Chongqing",
-    lat: 29.563,
-    lng: 106.552,
-    nights: 2,
-    hotelNightly: 60,
-    insertAfterId: "chengdu",
-    recap: "La metropoli cyberpunk sul Yangtze: grattacieli a strapiombo, monorotaia tra i palazzi, hotpot leggendario e le sculture UNESCO di Dazu. Deviazione facilissima da Chengdu.",
-    transport: "Treno AV da Chengdu Est 1h15–2h, ~154 ¥ (150 corse al giorno)",
-    season: "Mite (10–15°C) ma capitale della nebbia; luci notturne comunque spettacolari, hotel scontati",
-    activities: [
-      { id: "hongya-cave", name: "Hongyadong illuminata di notte", description: "Palafitte di 11 piani, gratis; al tramonto, vista dal ponte Qiansimen", price: 0, selected: false },
-      { id: "dazu-rock-carvings", name: "Sculture rupestri di Dazu (UNESCO)", description: "Mezza giornata a Baodingshan; biglietto invernale ridotto ~120 ¥/pp", price: 30, selected: false },
-      { id: "yangtze-cableway", name: "Funivia sul fiume Yangtze", description: "Traversata panoramica, ~30 ¥ A/R a testa; meglio nei feriali", price: 8, selected: false },
-    ],
-  },
-  {
-    id: "guilin",
-    name: "Guilin & Yangshuo",
-    lat: 25.274,
-    lng: 110.29,
-    nights: 3,
-    hotelNightly: 65,
-    insertAfterId: "kunming",
-    recap: "Il paesaggio carsico più iconico della Cina: crociera sul fiume Li tra i pinnacoli fino a Yangshuo, risaie e bambù. A dicembre pochissimi turisti e clima secco.",
-    transport: "Volo da Chengdu ~2h (500–1100 ¥) o treno AV da Kunming ~4h30 (~250 ¥)",
-    season: "Stagione secca: 13–21°C di giorno; fiume in magra (crociera a volte accorciata), foschia al mattino",
-    activities: [
-      { id: "li-river-cruise", name: "Crociera sul fiume Li fino a Yangshuo", description: "4–4,5h tra i pinnacoli; 3 stelle 215 ¥/pp, 4 stelle 360–480 ¥", price: 55, selected: false },
-      { id: "yulong-bamboo-raft", name: "Zattera di bambù sul fiume Yulong", description: "Zattera per 2 ~220 ¥ tra risaie e ponti antichi", price: 28, selected: false },
-      { id: "reed-flute-cave", name: "Grotta del Flauto di Canna", description: "Stalattiti illuminate in città, ~90 ¥/pp, visita 1h", price: 23, selected: false },
-    ],
-  },
-  {
-    id: "lijiang",
-    name: "Lijiang",
-    lat: 26.855,
-    lng: 100.227,
-    nights: 3,
-    hotelNightly: 55,
-    insertAfterId: "kunming",
-    recap: "Città vecchia Naxi patrimonio UNESCO ai piedi della Montagna Innevata del Drago di Giada: a inizio dicembre cieli tersi e vicoli senza folla. La più romantica del gruppo.",
-    transport: "Treno da Kunming 3–3,5h, 166–220 ¥ (12 coppie di treni al giorno)",
-    season: "Sole quasi garantito: ~14°C di giorno ma fino a 0°C la notte; bassa stagione, prezzi ridotti",
-    activities: [
-      { id: "jade-dragon-snow-mountain", name: "Montagna Innevata del Drago di Giada", description: "Ingresso ~100 ¥ + funivia Glacier Park ~140 ¥/pp; prenotare la funivia", price: 60, selected: false },
-      { id: "lijiang-old-town", name: "Città vecchia e Stagno del Drago Nero", description: "Vicoli e canali Naxi; tassa 50 ¥/pp che include il parco", price: 13, selected: false },
-      { id: "shuhe-old-town", name: "Borgo antico di Shuhe in bici", description: "Versione tranquilla di Lijiang a 20 min, ingresso libero", price: 0, selected: false },
-    ],
-  },
-  {
-    id: "dali",
-    name: "Dali",
-    lat: 25.606,
-    lng: 100.268,
-    nights: 2,
-    hotelNightly: 50,
-    insertAfterId: "kunming",
-    recap: "Atmosfera rilassata tra il lago Erhai e i monti Cangshan, cultura Bai e borghi come Xizhou: il ritmo lento ideale per spezzare l'itinerario.",
-    transport: "Treno AV da Kunming ~2h, 109–155 ¥; da Dali a Lijiang altri ~2h di treno",
-    season: "Il mese più secco: sole e ~16°C di giorno, 3°C la notte, vento sul lago; pochissimi turisti",
-    activities: [
-      { id: "three-pagodas", name: "Tre Pagode del Tempio Chongsheng", description: "Icona millenaria col riflesso nel laghetto; ~121 ¥/pp, 2–3h", price: 30, selected: false },
-      { id: "erhai-lake-loop", name: "Giro del lago Erhai in e-bike", description: "Scooter elettrico 60–100 ¥ al giorno; tappe a Xizhou e Shuanglang", price: 12, selected: false },
-      { id: "cangshan-cableway", name: "Funivia sui monti Cangshan", description: "Funivia Gantong ~80 ¥/pp e sentiero panoramico Jade Belt", price: 20, selected: false },
-    ],
-  },
-  {
-    id: "emeishan",
-    name: "Emeishan",
-    lat: 29.601,
-    lng: 103.484,
-    nights: 2,
-    hotelNightly: 65,
-    insertAfterId: "chengdu",
-    recap: "Montagna sacra buddhista con la statua dorata a 3.079 m sopra il mare di nuvole: in inverno neve in vetta e terme ai piedi del monte. Si abbina al Buddha di Leshan, a un'ora da Chengdu.",
-    transport: "Treno AV da Chengdu 1h–1h30 (~55–65 ¥); navetta interna 90 ¥ A/R",
-    season: "Neve da metà dicembre in quota; stagione Ice & Snow con terme, ingresso ridotto 110 ¥",
-    activities: [
-      { id: "cima-dorata-jinding", name: "Cima Dorata (Jinding)", description: "Ingresso 110–160 ¥ + bus 90 ¥ + funivia ~50 ¥; alba sul mare di nuvole", price: 60, selected: false },
-      { id: "buddha-gigante-leshan", name: "Buddha Gigante di Leshan", description: "Statua rupestre di 71 m, mezza giornata in treno da Emeishan; 80 ¥", price: 20, selected: false },
-      { id: "terme-di-emei", name: "Terme ai piedi del monte", description: "Sorgenti calde serali (es. Lingxiu Hot Spring), 150–200 ¥/pp", price: 45, selected: false },
-    ],
-  },
-  {
-    id: "xiamen",
-    name: "Xiamen",
-    lat: 24.48,
-    lng: 118.089,
-    nights: 2,
-    hotelNightly: 70,
-    insertAfterId: "fenghuang",
-    recap: "L'unica tappa mite possibile a dicembre: città di mare rilassata con l'isola pedonale di Gulangyu (UNESCO), ville coloniali e caffè. Richiede però una deviazione lunga.",
-    transport: "Volo da Changsha (vicino Fenghuang) 1h30 (~60–110 € a testa) o AV da Shanghai ~5h",
-    season: "Mite e soleggiato (11–20°C), bassa stagione; il vento può sospendere i traghetti",
-    activities: [
-      { id: "gulangyu-sunlight-rock", name: "Gulangyu e Sunlight Rock", description: "Traghetto A/R 35 ¥ + rocca panoramica 50 ¥; ville coloniali", price: 21, selected: false },
-      { id: "tempio-nanputuo", name: "Tempio Nanputuo", description: "Tempio buddhista accanto all'università; gratuito", price: 0, selected: false },
-      { id: "zengcuoan-lungomare", name: "Zengcuoan e lungomare", description: "Ex villaggio di pescatori con street food e caffè; gratis", price: 0, selected: false },
-    ],
-  },
-  {
-    id: "hangzhou",
-    name: "Hangzhou",
-    lat: 30.274,
-    lng: 120.155,
-    nights: 2,
-    hotelNightly: 75,
-    insertAfterId: "wuzhen",
-    recap: "Il Lago dell'Ovest è il paesaggio classico della poesia cinese: pagode, ponti e colline di tè a 45 minuti da Shanghai. Si incastra tra Wuzhen e Suzhou senza stravolgere l'itinerario.",
-    transport: "Bus diretto da Wuzhen ~1h; AV per Suzhou ~1h30 o Shanghai 45–60 min (~73 ¥)",
-    season: "Freddo secco (0–10°C), poca pioggia, folla minima; hotel a prezzi invernali",
-    activities: [
-      { id: "crociera-lago-ovest", name: "Crociera sul Lago dell'Ovest", description: "Battello per le Tre Pagode riflesse; al tramonto, 55–70 ¥/pp", price: 18, selected: false },
-      { id: "lingyin-feilai-feng", name: "Tempio Lingyin e Feilai Feng", description: "Area gratuita da dic 2025 (prenotare su WeChat); tempio 30 ¥", price: 8, selected: false },
-      { id: "villaggio-te-longjing", name: "Villaggio del tè Longjing", description: "Colline di tè Dragon Well, ingresso libero; degustazione ~50 ¥/pp", price: 13, selected: false },
-    ],
-  },
-  {
-    id: "huangshan",
-    name: "Huangshan e borghi Hui",
-    lat: 29.717,
-    lng: 118.339,
-    nights: 2,
-    hotelNightly: 95,
-    insertAfterId: "wuzhen",
-    recap: "Le Montagne Gialle innevate con pini brinati e mare di nuvole sono lo scenario più iconico della Cina; in inverno folla ai minimi. Con i borghi UNESCO Hongcun e Xidi.",
-    transport: "Treno AV da Hangzhou 1h15 (~112 ¥) o da Shanghai ~3h; poi bus ~1h per Tangkou",
-    season: "Tariffa invernale (150 ¥ invece di 230); neve e ghiaccio probabili, ramponi utili, notte in vetta per l'alba",
-    activities: [
-      { id: "vetta-huangshan", name: "Scalata dello Huangshan", description: "Ingresso inverno 150 ¥ + funivia Yungu 65 ¥ a tratta; notte in vetta", price: 70, selected: false },
-      { id: "borgo-hongcun", name: "Borgo di Hongcun", description: "Villaggio UNESCO del film La tigre e il dragone; 104 ¥, valido 3 giorni", price: 26, selected: false },
-      { id: "borgo-xidi", name: "Borgo di Xidi", description: "Architettura Hui e vicoli lastricati, più quieto di Hongcun; 104 ¥/pp", price: 26, selected: false },
-    ],
-  },
-  {
-    id: "pingyao",
-    name: "Pingyao",
-    lat: 37.2,
-    lng: 112.176,
-    nights: 1,
-    hotelNightly: 45,
-    insertAfterId: "beijing",
-    recap: "La città murata Ming meglio conservata della Cina (UNESCO): mura intatte, le prime banche dell'800, cortili e lanterne rosse. Spezza perfettamente il viaggio Pechino → Xi'an ed è magica la sera.",
-    transport: "Treno AV da Pechino ~4h (staz. Pingyao Gucheng), poi AV per Xi'an ~3h: tappa a metà strada",
-    season: "Freddo secco (−5/5°C) ma cieli tersi e vicoli quasi vuoti; guesthouse nei cortili storici a prezzi minimi",
-    activities: [
-      { id: "pingyao-pass", name: "Biglietto unico della città antica", description: "Mura, Rishengchang (prima banca cinese) e residenze; ~125 ¥/pp, valido 3 giorni", price: 32, selected: false },
-      { id: "pingyao-qiao", name: "Cortile della famiglia Qiao", description: "La residenza di «Lanterne rosse», a 40 min di auto; ~115 ¥/pp", price: 29, selected: false },
-      { id: "pingyao-shuanglin", name: "Tempio Shuanglin", description: "Sculture in argilla dipinta uniche, a 6 km dalle mura; ~35 ¥/pp", price: 9, selected: false },
-    ],
-  },
-  {
-    id: "huashan",
-    name: "Monte Hua (Huashan)",
-    lat: 34.49,
-    lng: 110.085,
-    nights: 1,
-    hotelNightly: 55,
-    insertAfterId: "xian",
-    recap: "La montagna sacra dell'ovest: creste di granito a strapiombo, scalinate scavate nella roccia e la famosa passerella di assi sospesa nel vuoto. Fattibile anche in giornata da Xi'an (idea dal blog Zipangu).",
-    transport: "AV da Xi'an Nord a Huashan Nord in 30–40 min (~55 ¥); navetta + funivia fino in cresta",
-    season: "In cresta freddo e vento (−5°C) ma cieli limpidi e sentieri deserti; ramponcini utili se ha nevicato",
-    activities: [
-      { id: "huashan-west-cable", name: "Funivia del Picco Ovest", description: "La salita più spettacolare; funivia ~140 ¥ + bus ~40 ¥ a tratta", price: 45, selected: false },
-      { id: "huashan-plank-walk", name: "Passerella nel vuoto (Plank Walk)", description: "Assi di legno sul precipizio, imbrago incluso; ~30 ¥/pp", price: 8, selected: false },
-      { id: "huashan-peaks-loop", name: "Anello dei cinque picchi", description: "Cresta tra picco Nord, Est e Sud; ingresso invernale ~100 ¥/pp", price: 25, selected: false },
-    ],
-  },
-  {
-    id: "luoyang",
-    name: "Luoyang & Shaolin",
-    lat: 34.62,
-    lng: 112.454,
-    nights: 2,
-    hotelNightly: 50,
-    insertAfterId: "xian",
-    recap: "Le grotte di Longmen (UNESCO) con centomila Buddha scolpiti nella roccia e il monastero Shaolin sul monte Songshan, culla del kung fu: la grande deviazione storica a est di Xi'an suggerita dal blog.",
-    transport: "AV da Xi'an Nord ~1h30 (~175 ¥); Shaolin a ~1h30 di bus/auto da Luoyang",
-    season: "Freddo secco (0–8°C), siti all'aperto senza folla; spettacoli di kung fu al coperto",
-    activities: [
-      { id: "longmen-grottoes", name: "Grotte di Longmen", description: "100.000 statue rupestri sul fiume Yi, illuminate anche la sera; ~90 ¥/pp", price: 23, selected: false },
-      { id: "shaolin-monastery", name: "Monastero Shaolin e foresta di pagode", description: "Spettacolo di kung fu incluso nel biglietto; ~80 ¥/pp + transfer", price: 20, selected: false },
-      { id: "white-horse-temple", name: "Tempio del Cavallo Bianco", description: "Il primo tempio buddhista della Cina (68 d.C.); ~35 ¥/pp", price: 9, selected: false },
-    ],
-  },
-  {
-    id: "wudangshan",
-    name: "Wudangshan",
-    lat: 32.4,
-    lng: 111.004,
-    nights: 2,
-    hotelNightly: 60,
-    insertAfterId: "xian",
-    recap: "La montagna del tai chi: monasteri taoisti UNESCO arroccati tra le nubi e la Vetta d'Oro. Il blog la segnala come nuova opzione: dal 30 giugno 2026 l'alta velocità Xi'an–Wuhan la mette a ~2h da Xi'an.",
-    transport: "Nuova AV Xi'an → Wudangshan ~2h (linea aperta a giugno 2026); navetta interna al parco",
-    season: "Freddo (0–10°C) e possibile neve sui gradini; con la nebbia l'atmosfera è ancora più mistica",
-    activities: [
-      { id: "wudang-golden-summit", name: "Vetta d'Oro (Jinding)", description: "Ingresso+bus ~230 ¥ + funivia ~90 ¥; tempio dorato a 1.612 m", price: 60, selected: false },
-      { id: "wudang-zixiao", name: "Palazzo delle Nubi Purpuree", description: "Il complesso taoista meglio conservato, ~15 ¥ extra", price: 4, selected: false },
-      { id: "wudang-taichi", name: "Lezione di tai chi", description: "1–2h con maestro locale nelle scuole ai piedi del monte; ~150 ¥/pp", price: 38, selected: false },
-    ],
-  },
-  {
-    id: "qingcheng-dujiangyan",
-    name: "Qingchengshan & Dujiangyan",
-    lat: 30.9,
-    lng: 103.605,
-    nights: 1,
-    hotelNightly: 55,
-    insertAfterId: "chengdu",
-    recap: "Il monte taoista Qingcheng e l'antico sistema di irrigazione di Dujiangyan (entrambi UNESCO) a mezz'ora di treno da Chengdu: boschi sempreverdi, templi e ponti sospesi. Perfetta anche in giornata senza spostare i bagagli.",
-    transport: "AV da Chengdu ~30–50 min (~15–25 ¥ a tratta); si può fare A/R in giornata",
-    season: "Fresco e umido (5–12°C) ma il bosco resta verde; pochissimi visitatori",
-    activities: [
-      { id: "qingcheng-front", name: "Monte Qingcheng (versante anteriore)", description: "Templi taoisti nel bosco; ingresso ~80 ¥ + funivia ~35 ¥", price: 29, selected: false },
-      { id: "dujiangyan-anlan", name: "Dujiangyan e ponte sospeso Anlan", description: "Capolavoro idraulico del 256 a.C. ancora in funzione; ~80 ¥/pp", price: 20, selected: false },
-      { id: "dujiangyan-panda", name: "Base panda di Dujiangyan", description: "Molto più tranquilla di quella di Chengdu; ~55 ¥/pp", price: 14, selected: false },
-    ],
-  },
-  {
-    id: "putuoshan",
-    name: "Putuoshan",
-    lat: 30.007,
-    lng: 122.387,
-    nights: 2,
-    hotelNightly: 75,
-    insertAfterId: "suzhou",
-    recap: "L'isola sacra di Guanyin nell'arcipelago di Zhoushan: templi in riva al mare, spiagge e la statua alta 33 m. È la montagna buddhista «sul mare» vicina a Shanghai citata dal blog.",
-    transport: "AV Suzhou/Shanghai → Ningbo ~1h30, poi bus + traghetto (~2h); il vento forte può fermare i traghetti",
-    season: "Clima costiero mite (5–12°C); nei feriali d'inverno pellegrini e turisti pochissimi",
-    activities: [
-      { id: "putuo-puji", name: "Tempio Puji e isola a piedi", description: "Ingresso isola ~140 ¥ + tempio ~5 ¥; sentieri costieri tra i templi", price: 37, selected: false },
-      { id: "putuo-guanyin", name: "Statua di Nanhai Guanyin", description: "La Guanyin dorata di 33 m sul promontorio; ~6 ¥/pp", price: 2, selected: false },
-      { id: "putuo-fanyin", name: "Grotta di Fanyin", description: "Tempio sospeso sulla scogliera dove «si sente la voce del mare»; ~5 ¥", price: 2, selected: false },
-    ],
-  },
-  {
-    id: "wuzhen",
-    name: "Wuzhen",
-    lat: 30.7462,
-    lng: 120.4943,
-    nights: 1,
-    hotelNightly: 100,
-    insertAfterId: "fenghuang",
-    recap: "Il borgo d'acqua più scenografico della Cina: canali illuminati la sera, spettacoli folk e la magia di dormire dentro l'area scenica di Xizha. Se l'avete tolta dal piano, da qui la rimettete con un click.",
-    transport: "Da Fenghuang treni via Changsha (7–9h, tratta delicata); da Hangzhou bus diretto ~1h",
-    season: "Freddo umido (2–10°C) ma canali senza folla; luci accese dal tramonto (~17)",
-    activities: [
-      { id: "xizha", name: "Xizha illuminata di sera", description: "150 ¥/pp; luci dal tramonto (~17 a dicembre); dormire nel borgo è il top", price: 38, selected: false },
-      { id: "canal-night-boat", name: "Barca notturna sui canali", description: "Privata ~480 ¥ fino a 8 posti; condivisa 60 ¥/pp", price: 60, selected: false },
-      { id: "dongzha-morning", name: "Dongzha al mattino", description: "110 ¥/pp; conviene il combinato Xizha+Dongzha a 190 ¥; case-museo", price: 28, selected: false },
-    ],
-  },
-  {
-    id: "suzhou",
-    name: "Suzhou",
-    lat: 31.2989,
-    lng: 120.5853,
-    nights: 2,
-    hotelNightly: 75,
-    insertAfterId: "wuzhen",
-    recap: "La «Venezia d'Oriente» dei giardini classici UNESCO, dei canali e di Pingjiang Road: il blog Zipangu consiglia almeno due giorni pieni. Attività e prezzi già pronti se volete rimetterla nel piano.",
-    transport: "AV per Shanghai in 25–40 min (~20 €); da Wuzhen ~1h30 di Didi o bus, da Hangzhou AV ~1h30",
-    season: "Freddo secco (0–10°C), giardini quieti; alcuni show serali sospesi d'inverno",
-    activities: [
-      { id: "humble-garden", name: "Giardino dell’Umile Amministratore", description: "70 ¥/pp bassa stagione; prenotare online con passaporto, chiude alle 17", price: 18, selected: false },
-      { id: "pingjiang-road", name: "Pingjiang Road", description: "Gratis; canale storico, case da tè e negozi, perfetta nel tardo pomeriggio", price: 0, selected: false },
-      { id: "suzhou-museum", name: "Museo di Suzhou (I.M. Pei)", description: "Gratuito; prenotazione WeChat 7 gg prima con passaporto; chiuso lunedì", price: 0, selected: false },
-      { id: "tiger-hill", name: "Tiger Hill e pagoda pendente", description: "60 ¥/pp a dicembre; simbolo di Suzhou, 2–3 ore con il parco", price: 15, selected: false },
-    ],
-  },
-];
+/** Tappa entrata con l’itinerario definitivo (migrazione v5): non era nel piano originale. */
+export const CHONGQING_STOP: Stop = { id: "chongqing", name: "Chongqing", lat: 29.563, lng: 106.552, nights: 2, hotelNightly: 60, activities: [] };
 
 // Nomi in cinese di città e attività: servono per chiedere indicazioni o mostrarli a un tassista.
 export const STOP_ZH: Record<string, string> = {
@@ -666,7 +383,7 @@ export const initialSchedule: ScheduleItem[] = [
 // ---------------------------------------------------------------------------
 
 export const CHECKLIST_GROUPS: Array<{ id: ChecklistGroup; title: string; subtitle: string }> = [
-  { id: "pianificazione", title: "Prima di prenotare", subtitle: "Da decidere prima di bloccare hotel e treni" },
+  { id: "pianificazione", title: "Prenotazioni e documenti", subtitle: "Gli hotel che mancano e le carte per entrare in Cina" },
   { id: "a-casa", title: "A casa, prima di partire", subtitle: "Dalla Cina è impossibile (siti e store bloccati) o una pessima idea" },
   { id: "ultima-settimana", title: "Ultima settimana", subtitle: "Finestre di vendita e controlli finali" },
   { id: "arrivo", title: "All’arrivo", subtitle: "Le prime ore in Cina" },
@@ -676,12 +393,12 @@ export const CHECKLIST_GROUPS: Array<{ id: ChecklistGroup; title: string; subtit
 /** 12306 vende i treni dei prossimi 15 giorni, oggi compreso: un treno del 20 si compra dal 6. */
 export const TRAIN_SALE_DAYS = 15;
 
-/** Spunte salvate per posizione in `checklist`: non riordinare, solo aggiungere in fondo. */
+/** Spunte salvate per posizione in `checklist`: non riordinare, solo aggiungere in fondo (o ritirare). */
 export const defaultChecklist: Array<Omit<PrepItem, "id">> = [
-  { label: "Confermare ritmo e tappe insieme", group: "pianificazione" },
+  { label: "Confermare ritmo e tappe insieme", group: "pianificazione", retired: true },
   { label: "Prenotare hotel cancellabili", group: "pianificazione", hint: "Solo hotel che accettano stranieri: Trip.com e Booking mostrano solo quelli, e al check-in fanno loro la registrazione in polizia. La cancellazione gratuita scade spesso a mezzogiorno (ora cinese) del giorno prima, non a mezzanotte." },
-  { label: "Risolvere Kunming → Zhangjiajie", group: "pianificazione" },
-  { label: "Risolvere Fenghuang → Wuzhen", group: "pianificazione" },
+  { label: "Risolvere Kunming → Zhangjiajie", group: "pianificazione", retired: true },
+  { label: "Risolvere Fenghuang → Wuzhen", group: "pianificazione", retired: true },
   { label: "Prenotare ingressi di Pechino", group: "ultima-settimana", due: "2026-11-10", hint: "Città Proibita: tour già prenotato. I musei nazionali sono gratuiti ma su prenotazione (WeChat o sito) con il numero di passaporto di ognuno; molti chiudono il lunedì." },
   { label: "Verificare visto / ingresso in Cina", group: "pianificazione", due: "2026-11-03", hint: "Passaporto italiano: niente visto fino a 30 giorni (politica unilaterale, per ingressi fino al 31/12/2026), e 17 nov → 4 dic ci sta. È una politica, non un diritto: ricontrollare lista e scadenza sul sito dell’ambasciata prima di partire." },
   { label: "Preparare eSIM, VPN e mappe offline", group: "a-casa", due: "2026-11-03", hint: "I passaggi, uno per uno, sono qui sotto; le app una per una sono nella «Guida».", guide: "guide-apps" },
