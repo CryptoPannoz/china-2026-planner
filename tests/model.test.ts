@@ -210,6 +210,8 @@ test("la migrazione è idempotente, anche dopo un giro su Firestore (chiavi rior
   // Firestore restituisce i campi in ordine alfabetico: il confronto non deve vedere differenze.
   const sortedKeys = JSON.parse(stableStringify(once));
   assert.deepEqual(changedKeys(once, sortedKeys), []);
+  // Un'app vecchia aperta che riporta indietro il numero di versione non va inseguita con un'altra scrittura.
+  assert.deepEqual(changedKeys({ ...once, itineraryVersion: PLAN_VERSION - 1 }, once), []);
 });
 
 test("l'unione con il cloud conserva le modifiche di entrambi", () => {

@@ -612,9 +612,13 @@ export function mergePlan(base: PlanData | null, local: PlanData, remote: PlanDa
   return refreshDerived(merged as PlanData);
 }
 
-/** Chiavi del piano diverse dall'ultimo stato salvato nel cloud. */
+/**
+ * Chiavi del piano diverse dall'ultimo stato salvato nel cloud. La versione da sola non conta: un'app
+ * vecchia ancora aperta la riporta al suo numero, e rispondere riscrivendo la nostra farebbe rimbalzare
+ * il documento all'infinito. Il numero giusto parte comunque con ogni salvataggio.
+ */
 export function changedKeys(base: PlanData | null, plan: PlanData) {
-  return PLAN_KEYS.filter((key) => !base || !sameValue(base[key], plan[key]));
+  return PLAN_KEYS.filter((key) => key !== "itineraryVersion" && (!base || !sameValue(base[key], plan[key])));
 }
 
 // ---------------------------------------------------------------------------
