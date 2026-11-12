@@ -62,7 +62,8 @@ export function usePlanSync(user: User | null, demo: boolean) {
   const storageKey = demo ? DEMO_STORAGE_KEY : STORAGE_KEY;
   const [stored] = useState(() => readStored(storageKey));
   const [plan, setPlan] = useState<PlanData>(() => stored.plan || seedPlan());
-  const [ready, setReady] = useState(demo);
+  // Con una copia locale si parte subito (anche offline): il cloud arriva e si unisce dopo.
+  const [ready, setReady] = useState(demo || Boolean(stored.plan));
   const [status, setStatus] = useState<SyncStatus>(demo ? "demo" : "loading");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const planRef = useRef(plan);

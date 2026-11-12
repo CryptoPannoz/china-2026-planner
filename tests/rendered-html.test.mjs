@@ -9,7 +9,7 @@ async function source(path) {
 
 async function appSources() {
   const files = ["app/ChinaPlanner.tsx", "lib/firebase.ts"];
-  for (const dir of ["app/planner", "app/planner/sections", "lib/planner"]) {
+  for (const dir of ["app/trip", "lib/planner", "lib/trip"]) {
     const entries = await readdir(new URL(`../${dir}`, import.meta.url));
     files.push(...entries.filter((name) => /\.tsx?$/.test(name)).map((name) => `${dir}/${name}`));
   }

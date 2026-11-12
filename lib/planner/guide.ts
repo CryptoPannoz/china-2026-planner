@@ -507,7 +507,7 @@ export const CITY_TIPS: Record<string, string[]> = {
     "SIM cinese in aeroporto: sportello China Mobile al T3C, vicino al nastro 38; in città 王府井大街200号 (工美大厦B1).",
     "Stazioni: Beijing West ≠ Beijing South. Controllare quella sul biglietto e la linea della metro che ci arriva.",
     "Metro: QR «Transport» di Alipay, oppure la carta contactless Visa/Mastercard direttamente al tornello.",
-    "A metà novembre circa 12° di giorno e 4° di notte, e al nord l’aria può essere pessima: due KN95 in borsa.",
+    "Dal 17 al 20 novembre 6–11° di giorno e sotto zero di notte (media 9° / 0°), vento secco: strati, berretto e guanti. L’aria può essere pessima: due KN95 in borsa.",
   ],
   xian: [
     "Esercito di Terracotta: biglietto nominativo con il passaporto, al massimo 7 giorni prima; i posti finiscono presto, segnarsi l’apertura.",

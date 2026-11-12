@@ -4,26 +4,20 @@ Planner condiviso del viaggio di Alberto e Sofia. Il sito è pubblicato
 gratuitamente su GitHub Pages, mentre accesso e dati sono gestiti dal piano
 gratuito Firebase Spark.
 
-Permette di:
+Dal 12 novembre 2026 è un **wallet e scheduler di viaggio** installabile sul telefono (web app, funziona
+anche offline), con quattro schede:
 
-- seguire l’itinerario definitivo (tappe e notti non si modificano più) con la striscia dei giorni sempre visibile;
-- vedere in **«Da prenotare»** (in «Checklist & note») cosa manca: notti senza hotel prenotato, tratte
-  aperte con la data di apertura delle vendite 12306, biglietti dell’agenda ancora da comprare;
-- vedere in **«Da sistemare»** i controlli automatici: notti senza hotel o con due hotel, hotel prenotati
-  con date diverse dalla tappa, attività rimaste senza giornata, orari sovrapposti, tratte escluse;
-- organizzare ogni giornata per orario (lista o vista a ore) e spostare un blocco su un altro giorno;
-- gestire gli hotel tappa per tappa: quelli ancora da prenotare seguono da soli le date della tappa;
-- gestire le tratte tra città con orari, numero treno/volo e prenotazione (compaiono nel giorno giusto);
-- registrare le **spese effettive con chi ha pagato**, confrontare previsto e speso per categoria e
-  vedere il **bilancio stile Splitwise** tra Alberto e Sofia;
-- inserire costi in euro o yuan con cambio modificabile;
-- vedere il percorso sulla mappa (strade, satellite o rilievo);
-- aprire luoghi in Google Maps, con nomi in cinese per il tassista;
-- vedere chi ha modificato cosa e scaricare un backup JSON del piano;
-- lavorare da computer e telefono anche offline: le modifiche si sincronizzano appena torna la rete.
+- **Viaggio** — giorno per giorno dal 16 nov al 4 dic: voli, treni, check-in/out, attività e promemoria,
+  con il meteo medio di ogni tappa; prima della partenza il conto alla rovescia.
+- **Wallet** — voli, treni (carrozza e posti), hotel con «🚕 Mostra in cinese», attività, assicurazione e
+  documenti, con i PDF delle conferme in Drive.
+- **Da fare** — cose da fare prima di partire divise per data e per persona (spunte sincronizzate) e la
+  valigia con il meteo storico delle tappe (spunte solo sul telefono).
+- **Info** — conti tra Alberto e Sofia con le spese in viaggio, emergenze, frasi, app, consigli per città,
+  note condivise.
 
-Le attività in agenda sono agganciate alla **tappa e al giorno dentro la tappa**: se cambiano le notti o
-l'ordine delle città, seguono la loro città invece di restare su una data vecchia.
+Numeri di prenotazione, indirizzi, telefoni e note restano nel documento Firestore (dopo il login); nel
+codice pubblico (`lib/trip/data.ts`) ci sono solo orari, link ai PDF privati in Drive, meteo e liste.
 
 L'accesso con Google è consentito soltanto a:
 
@@ -55,11 +49,10 @@ npm run test:build  # compila il sito statico e lo verifica
 
 ### Struttura
 
-- `lib/planner/` — logica pura, testata con `node --test`: `catalog.ts` (tappe, nomi cinesi,
-  piano iniziale, checklist), `model.ts` (timeline, migrazioni dei salvataggi, unione con il cloud,
-  budget, controlli, cosa resta da prenotare), `utils.ts` (date, soldi, link).
-- `app/planner/` — interfaccia: `PlannerApp.tsx`, `usePlanSync.ts` (Firestore + copia locale),
-  `sections/` (una sezione per scheda), mappa, griglia oraria, campi che salvano all'uscita.
+- `lib/planner/` — formato dei dati, migrazioni e unione con il cloud, testati con `node --test`.
+- `lib/trip/data.ts` — voli, posti dei treni, link Drive, promemoria, meteo, cose da fare, valigia.
+- `app/trip/` — interfaccia: `TripApp.tsx` e una scheda per file; `usePlanSync.ts` (Firestore + copia locale).
+- `public/manifest.webmanifest` e `public/sw.js` — installazione sul telefono e uso offline.
 - `app/ChinaPlanner.tsx` — accesso con Google.
 
 ## Pubblicazione

@@ -6,9 +6,10 @@ export statico su GitHub Pages; dati in Firestore (progetto `china-2026-bebroggi
 (anche in `firestore.rules`).
 
 ## Fase del viaggio
-- La pianificazione è chiusa (2 nov 2026): tappe e notti sono definitive, niente più proposte di città,
-  attività clou o modifica delle notti. Ora si inseriscono prenotazioni e si segue «Da prenotare» in
-  «Checklist & note».
+- Dal 12 nov 2026 l'app è un wallet + scheduler (schede Viaggio, Wallet, Da fare, Info in `app/trip/`):
+  niente più pianificazione. Dati pubblicabili in `lib/trip/data.ts`; tutto ciò che è privato (numeri di
+  prenotazione, indirizzi, telefoni, note) solo in Firestore. Le spunte di «Da fare» usano `extraChecklist`
+  (id `go-*` aggiunti alla prima spunta), quelle della valigia `localStorage`.
 
 ## Inbox biglietti
 - `inbox/` (esclusa da git: il repo è **pubblico**, entra solo `inbox/LEGGIMI.md`): Alberto ci lascia
@@ -21,7 +22,7 @@ export statico su GitHub Pages; dati in Firestore (progetto `china-2026-bebroggi
 - Le regole Firestore non passano dalla CI: vanno pubblicate a mano con la CLI Firebase.
 
 ## Lavorare sul codice
-- Logica in `lib/planner/` (pura, importi con estensione `.ts` per `node --test`); UI in `app/planner/`.
+- Logica in `lib/planner/` (pura, importi con estensione `.ts` per `node --test`); UI in `app/trip/`.
 - Prova locale senza login: `npm run dev` e apri `/?demo` (dati solo nel browser, chiave `china-planner-demo`).
 - `npm test` (logica) e `npm run lint` devono passare; `npm run test:build` verifica l'export.
 

@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
+import { getRedirectResult, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut, type User } from "firebase/auth";
 import { auth, googleProvider } from "@/lib/firebase";
 import { ALLOWED_EMAILS } from "@/lib/planner/catalog";
-import { PlannerApp } from "./planner/PlannerApp";
+import { TripApp } from "./trip/TripApp";
 
 const noSubscription = () => () => undefined;
 
@@ -25,6 +25,8 @@ export function ChinaPlanner() {
   const [signingIn, setSigningIn] = useState(false);
 
   useEffect(() => {
+    // Ritorno dal login a pagina intera (usato quando la finestra di Google non si apre, es. web app installata).
+    getRedirectResult(auth).catch(() => setAuthError("Accesso non riuscito. Riprova con Google."));
     return onAuthStateChanged(auth, async (user) => {
       const email = user?.email?.toLowerCase() || "";
       if (user && !ALLOWED_EMAILS.has(email)) {
@@ -50,13 +52,17 @@ export function ChinaPlanner() {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
+      if (/popup-blocked|operation-not-supported|web-storage-unsupported/.test(message)) {
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
       if (!message.includes("popup-closed-by-user")) setAuthError("Accesso non riuscito. Riprova con Google.");
     } finally {
       setSigningIn(false);
     }
   }
 
-  if (demo) return <PlannerApp user={null} demo />;
+  if (demo) return <TripApp user={null} demo />;
 
   if (!authReady) {
     return <main className="access-page"><div className="access-card"><p className="eyebrow">Cina 2026</p><h1>Caricamento del planner…</h1></div></main>;
@@ -67,7 +73,7 @@ export function ChinaPlanner() {
       <div className="access-card">
         <p className="eyebrow">Alberto & Sofia · Cina 2026</p>
         <h1>Il viaggio, sempre con voi.</h1>
-        <p>Accedi con uno dei due account autorizzati. Agenda, costi e note saranno sincronizzati tra computer e telefono.</p>
+        <p>Biglietti, hotel, orari e cose da fare: sul telefono, anche offline. Accedi una volta con l&apos;account di Alberto o di Sofia.</p>
         <button className="google-login" onClick={login} disabled={signingIn}>{signingIn ? "Accesso…" : "Continua con Google"}</button>
         {authError && <p className="access-error">{authError}</p>}
         <small>Account autorizzati: Alberto e Sofia.</small>
@@ -75,5 +81,5 @@ export function ChinaPlanner() {
     </main>;
   }
 
-  return <PlannerApp user={currentUser} demo={false} />;
+  return <TripApp user={currentUser} demo={false} />;
 }
