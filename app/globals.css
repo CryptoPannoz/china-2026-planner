@@ -58,6 +58,7 @@ h3 { margin: 0 0 6px; font: 800 17px/1.2 var(--sans); letter-spacing: -.01em; }
 
 .tab { display: grid; gap: 12px; }
 .card { padding: 16px; border: 1px solid var(--line); border-radius: 18px; background: var(--card); box-shadow: var(--shadow); transition: box-shadow .3s, border-color .3s; }
+.card[id] { scroll-margin-top: 128px; }
 .card.flash { border-color: var(--orange); box-shadow: 0 0 0 3px var(--orange-soft); }
 .card.loading { display: grid; gap: 4px; margin-top: 30px; text-align: center; }
 .card.loading span, .hint, .free { color: var(--muted); font-size: 13px; }

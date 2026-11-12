@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { scheduleKind } from "@/lib/planner/model";
-import { addDaysKey, diffDaysKey, formatLongDate } from "@/lib/planner/utils";
+import { addDaysKey, diffDaysKey, formatLongDate, minutesToTime, timeToMinutes } from "@/lib/planner/utils";
 import { DEPARTURE_AT, FLIGHTS, REMINDERS, TODOS, TRAIN_SEATS, TRIP_END, TRIP_START, WEATHER } from "@/lib/trip/data";
 import { latinPart, todayKey, useTrip } from "./shared";
 
@@ -55,10 +55,18 @@ export function useEvents() {
         anchor: `w-leg-${leg.id}`,
       });
     });
+    // Check-out entro le 12, ma prima se quel giorno si parte presto (treno: 1h30 prima, volo: 2h20).
+    const checkoutTime = (stopId: string, date: string) => {
+      if (date === TRIP_END) return "05:15";
+      const leg = view.legs.find((entry) => entry.fromId === stopId && view.legDateOf(entry) === date && entry.departureTime);
+      if (!leg?.departureTime) return "12:00";
+      const early = timeToMinutes(leg.departureTime) - (/✈️|volo/i.test(leg.mode) ? 140 : 90);
+      return minutesToTime(Math.min(12 * 60, Math.floor(early / 5) * 5));
+    };
     plan.hotelStays.filter((stay) => stay.bookingStatus === "prenotato").forEach((stay) => {
       const name = latinPart(stay.name) || stay.name;
       events.push({ id: `in-${stay.id}`, date: stay.checkInDate, time: CHECK_IN[stay.stopId] || "14:00", icon: "🛏️", title: `Check-in · ${name}`, sub: "Passaporti alla reception", tone: "sleep", anchor: `w-hotel-${stay.stopId}` });
-      events.push({ id: `out-${stay.id}`, date: stay.checkOutDate, time: stay.checkOutDate === TRIP_END ? "05:15" : "12:00", icon: "🧳", title: `Check-out · ${name}`, sub: stay.checkOutDate === TRIP_END ? "Si parte per l'aeroporto" : "Entro le 12: bagagli in deposito se serve", tone: "sleep", anchor: `w-hotel-${stay.stopId}` });
+      events.push({ id: `out-${stay.id}`, date: stay.checkOutDate, time: checkoutTime(stay.stopId, stay.checkOutDate), icon: "🧳", title: `Check-out · ${name}`, sub: stay.checkOutDate === TRIP_END ? "Si parte per l'aeroporto" : "Entro le 12 · bagagli in deposito se si parte nel pomeriggio", tone: "sleep", anchor: `w-hotel-${stay.stopId}` });
     });
     plan.scheduleItems.forEach((item) => {
       const kind = scheduleKind(item);
