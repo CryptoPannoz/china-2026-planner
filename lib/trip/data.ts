@@ -78,6 +78,7 @@ export const TRAIN_SEATS: Record<string, { car: string; seats: string; gate?: st
   "beijing-xian": { car: "11", seats: "1C Alberto · 1D Sofia", gate: "检票口 10–11", issued: "emessi il 6 nov" },
   "xian-chengdu": { car: "3", seats: "17A Alberto · 17B Sofia", gate: "23B", issued: "emessi il 9 nov" },
   "chengdu-chongqing": { car: "5", seats: "11B Alberto · 11C Sofia", gate: "A26", issued: "emessi l'11 nov" },
+  "chongqing-zhangjiajie": { car: "3", seats: "13C Alberto · 13D Sofia", gate: "22B", issued: "emessi il 13 nov" },
 };
 
 /** Voli intercontinentali: numeri e orari (ora locale). Prenotazione e PNR sono nei PDF. */
@@ -119,11 +120,34 @@ export const REMINDERS: Array<{ date: string; time: string; title: string; detai
   { date: "2026-11-17", time: "13:00", title: "Prima ora in Cina", detail: "eSIM accesa, prova WhatsApp e Google; Alipay aperto (la carta è ancora collegata?); QR «Transport» per la metro di Pechino. Foto della pagina col timbro d'ingresso." },
   { date: "2026-11-18", time: "11:20", title: "Ritrovo Città Proibita", detail: "Casa da tè Lao She, bandiera con il panda. Metro linea 2 fino a Qianmen, uscita C, poi 300 m. Passaporti! Non scendere a Tian'anmen Est/Ovest." },
   { date: "2026-11-20", time: "13:05", title: "In stazione a Beijing West", detail: "Un'ora prima del G367: controlli di sicurezza e passaporto." },
+  { date: "2026-11-20", time: "21:00", title: "Pronti per la Terracotta di domani", detail: "Pick-up in hotel alle 8:15: passaporti in borsa (il biglietto è nominativo), scarpe comode, strati, Alipay o contanti per pagare il tour, se non è già pagato." },
   { date: "2026-11-26", time: "10:00", title: "Biglietto Tianmen Shan tramite la guesthouse", detail: "Sconto di ¥20 se prenotato 2 giorni prima. In cima ~0°: strati, guanti, scarpe che non scivolano." },
   { date: "2026-11-28", time: "18:00", title: "Telefonare all'host di Shanghai", detail: "Serve il codice del self check-in (dalle 15:00 del 29). Numero nella scheda hotel." },
   { date: "2026-11-29", time: "09:30", title: "Partire per l'aeroporto di Zhangjiajie", detail: "Volo FM9342 alle 11:50 dal T2 di Hehua (DYG)." },
   { date: "2026-12-03", time: "20:00", title: "Preparare il rientro", detail: "Check-in online SWISS, DiDi prenotato per le 5:30, valigia sotto i 23 kg." },
   { date: "2026-12-04", time: "05:30", title: "DiDi per Pudong T2", detail: "In aeroporto alle 06:40." },
+];
+
+/** Visite prenotate fuori da Trip.com / GetYourGuide: compaiono nello scheduler e nel Wallet. */
+export type ExtraActivity = { id: string; date: string; start: string; end: string; title: string; place: string; placeZh?: string; includes: string[]; price: string; tips: string[] };
+export const EXTRA_ACTIVITIES: ExtraActivity[] = [
+  {
+    id: "terracotta",
+    date: "2026-11-21",
+    start: "08:15",
+    end: "14:15",
+    title: "Esercito di Terracotta · tour di gruppo con pranzo in famiglia",
+    place: "Museo dell'Esercito di Terracotta, Lintong (Xi'an)",
+    placeZh: "秦始皇帝陵博物院（兵马俑）",
+    includes: ["Pick-up e rientro in hotel", "Biglietto d'ingresso", "Guida in inglese", "Pranzo tipico in famiglia"],
+    price: "¥320 a testa · ¥640 in due · circa 6 ore",
+    tips: [
+      "Pick-up alle 8:15 alla reception dell'hotel di Xi'an: scendere 5 minuti prima.",
+      "Passaporto originale obbligatorio: il biglietto è nominativo e lo controllano all'ingresso.",
+      "Si cammina molto e i padiglioni non sono riscaldati: strati e scarpe comode.",
+      "Quando lo pagate, registratelo in Info → Conti, così il saldo tra voi resta giusto.",
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -156,7 +180,7 @@ export type Todo = { id: string; when: TodoWhen; who: Who; label: string; hint?:
 
 export const TODOS: Todo[] = [
   // Subito
-  { id: "check-mvz8hd8n-ic6h2", when: "subito", who: "alberto", label: "Venerdì 13: controllare in Trip.com che il treno Chongqing → Zhangjiajie (G2321) risulti emesso", hint: "Trip.com lo compra alle 11:00 ora cinese (le 4:00 in Italia) e manda l'esito per mail. Gli altri tre treni sono già emessi, con carrozza e posti (vedi Wallet). Se va in lista d'attesa niente panico: per il G2241 è passato a «emesso» in un minuto." },
+  { id: "check-mvz8hd8n-ic6h2", when: "subito", who: "alberto", label: "Controllare in Trip.com che il treno Chongqing → Zhangjiajie (G2321) risulti emesso", hint: "Emesso il 13 nov alle 4:01: carrozza 3, posti 13C e 13D, varco 22B. Rimborsati 2 € di commissione: in tutto 69,72 €. Tutti e quattro i treni sono emessi (vedi Wallet)." },
   { id: "go-zjj-sofia", when: "subito", who: "alberto", label: "Aggiungere Sofia alla prenotazione di Zhangjiajie dall'app Trip.com", hint: "Sulla prenotazione della guesthouse c'è solo Alberto: in Cina l'hotel registra ogni ospite col passaporto." },
   { id: "go-sofia-permesso", when: "subito", who: "sofia", label: "Permesso di soggiorno valido, in borsa insieme al passaporto", hint: "Si esce da Schengen a Monaco e si rientra a Zurigo: con il passaporto serve il titolo di soggiorno. Per la Cina niente visto: esenzione di 30 giorni valida fino al 31/12/2027 (il viaggio ne dura 18)." },
   { id: "prep-esim-buy", when: "subito", who: "entrambi", label: "Comprare l'eSIM per la Cina (consiglio: Nomad, 20 GB / 30 giorni)", hint: "Roaming che esce a Hong Kong: Google, WhatsApp, Instagram e Gmail funzionano senza VPN. Dalla Cina i siti delle eSIM sono bloccati, quindi va comprata ora. Codice Nomad BBIYPGMWJSLW = 5 $ di sconto. Alternativa: Saily. Holafly solo se volete i dati illimitati.", links: [{ label: "Nomad", url: "https://www.nomadesim.com/" }, { label: "Saily", url: "https://saily.com/" }] },

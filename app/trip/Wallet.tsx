@@ -3,7 +3,7 @@
 import { scheduleKind } from "@/lib/planner/model";
 import type { HotelStay, Leg, ScheduleItem } from "@/lib/planner/types";
 import { formatCost, formatLongDate, formatShortDate } from "@/lib/planner/utils";
-import { DOCS, EMERGENCY, FLIGHTS, TRAIN_SEATS } from "@/lib/trip/data";
+import { DOCS, EMERGENCY, EXTRA_ACTIVITIES, FLIGHTS, TRAIN_SEATS, type ExtraActivity } from "@/lib/trip/data";
 import { CopyChip, DocButtons, appleMapsUrl, bookingNumber, chinesePart, gmailSearchUrl, latinPart, mapsUrl, phonesIn, useTrip } from "./shared";
 
 function Notes({ text }: { text?: string }) {
@@ -94,6 +94,19 @@ function ItemCard({ item }: { item: ScheduleItem }) {
   </article>;
 }
 
+function ExtraCard({ activity }: { activity: ExtraActivity }) {
+  const { showChinese } = useTrip();
+  return <article id={`w-extra-${activity.id}`} className="card pass">
+    <header><span className="pass-kind">🎟️ Attività · {formatLongDate(activity.date)} · {activity.start}–{activity.end}</span><h3>{activity.title}</h3></header>
+    <p className="address">{activity.place}{activity.placeZh && <><br /><span className="zh">{activity.placeZh}</span></>}</p>
+    <div className="seats"><div><small>Pick-up</small><b>{activity.start} in hotel</b></div><div><small>Prezzo</small><b>{activity.price.split(" · ")[1] || activity.price}</b></div></div>
+    <ul className="tips">{activity.includes.map((item) => <li key={item}>{item}</li>)}</ul>
+    <p className="hint">{activity.price}</p>
+    <ul className="tips">{activity.tips.map((tip) => <li key={tip}>{tip}</li>)}</ul>
+    {activity.placeZh && <div className="chips"><button className="chip primary" onClick={() => showChinese({ kind: "place", title: activity.place, titleZh: activity.placeZh, subtitle: "" })}>🚕 Mostra in cinese</button></div>}
+  </article>;
+}
+
 export function WalletTab() {
   const { plan, view } = useTrip();
   const legs = view.legs.filter((leg) => leg.included);
@@ -115,7 +128,8 @@ export function WalletTab() {
     <h2 id="w-hotels" className="section-title">Hotel · {hotels.length} su 6</h2>
     {hotels.map((stay) => <HotelCard key={stay.id} stay={stay} />)}
     <h2 id="w-items" className="section-title">Attività prenotate</h2>
-    {items.length ? items.map((item) => <ItemCard key={item.id} item={item} />) : <p className="free">Nessuna: le altre visite si prenotano sul posto.</p>}
+    {[...items.map((item) => ({ date: `${item.date} ${item.startTime}`, node: <ItemCard key={item.id} item={item} /> })), ...EXTRA_ACTIVITIES.map((activity) => ({ date: `${activity.date} ${activity.start}`, node: <ExtraCard key={activity.id} activity={activity} /> }))]
+      .sort((left, right) => left.date.localeCompare(right.date)).map((entry) => entry.node)}
     <h2 id="w-insurance" className="section-title">Assicurazione</h2>
     <article className="card pass">
       <header><span className="pass-kind">🛡️ AXA · comprata con i voli</span><h3>Spese mediche e rimpatrio fino a 500.000 €</h3></header>

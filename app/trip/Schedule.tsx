@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { scheduleKind } from "@/lib/planner/model";
 import { addDaysKey, diffDaysKey, formatLongDate, minutesToTime, timeToMinutes } from "@/lib/planner/utils";
-import { DEPARTURE_AT, FLIGHTS, REMINDERS, TODOS, TRAIN_SEATS, TRIP_END, TRIP_START, WEATHER } from "@/lib/trip/data";
+import { DEPARTURE_AT, EXTRA_ACTIVITIES, FLIGHTS, REMINDERS, TODOS, TRAIN_SEATS, TRIP_END, TRIP_START, WEATHER } from "@/lib/trip/data";
 import { latinPart, todayKey, useTrip } from "./shared";
 
 type TripEvent = {
@@ -81,6 +81,17 @@ export function useEvents() {
         anchor: item.bookingStatus === "prenotato" && kind !== "transport" ? `w-item-${item.id}` : undefined,
       });
     });
+    EXTRA_ACTIVITIES.forEach((activity) => events.push({
+      id: `extra-${activity.id}`,
+      date: activity.date,
+      time: activity.start,
+      icon: "🎟️",
+      title: activity.title,
+      sub: `${activity.start}–${activity.end} · ${activity.includes.join(", ").toLowerCase()}`,
+      detail: activity.price,
+      tone: "do",
+      anchor: `w-extra-${activity.id}`,
+    }));
     REMINDERS.forEach((reminder, index) => events.push({ id: `rem-${index}`, date: reminder.date, time: reminder.time, icon: "🔔", title: reminder.title, detail: reminder.detail, tone: "note" }));
     return events.sort((left, right) => (left.date + left.time).localeCompare(right.date + right.time));
   }, [plan.hotelStays, plan.scheduleItems, view]);
